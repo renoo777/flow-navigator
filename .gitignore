@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+
+# Tauri（Rust 构建产物与自动生成代码）
+src-tauri/target/
+src-tauri/gen/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+
+# 本地验证脚本与截图（不随仓库分发）
+probe_*.js
+shot_*.js
+run_regression.js
+probe-*/
+*_build*.png

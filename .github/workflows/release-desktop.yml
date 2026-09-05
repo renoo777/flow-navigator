@@ -1,0 +1,62 @@
+# 桌面安装包跨平台构建：推 tag（v*）时触发
+# 产物以 Draft Release 形式挂到仓库 Releases 页 —— 确认无误后点 Publish 即对外发布。
+name: Release Desktop
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest # Windows: NSIS 安装器 + MSI
+            args: ''
+          - platform: macos-latest # Apple Silicon (M 系列)
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest # Intel Mac
+            args: '--target x86_64-apple-darwin'
+          - platform: ubuntu-22.04 # Linux: deb / AppImage / rpm
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      # Rust 增量缓存：二次构建从 ~10 分钟降到 ~3 分钟
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux dependencies (webkit2gtk 等)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Flow Navigator v__VERSION__'
+          releaseBody: '桌面安装包：Windows（exe/msi）· macOS（dmg，Intel 与 Apple Silicon）· Linux（deb/AppImage）。下载对应平台安装包即可，数据保存在本机。'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

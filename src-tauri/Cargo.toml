@@ -1,0 +1,25 @@
+[package]
+name = "flow-navigator"
+version = "0.1.0"
+description = "变量导航器 · 复杂流程图变量拆解工具"
+edition = "2021"
+rust-version = "1.77.2"
+
+# 库名必须以下划线分隔（Rust crate 命名规范），会在 main.rs 中被引用
+[lib]
+name = "flow_navigator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# 仅依赖 tauri 本体：不引入 serde / 插件，首次编译可省下数十个 crate
+tauri = { version = "2", features = [] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

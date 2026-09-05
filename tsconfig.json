@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@flow/core": ["packages/flow-core/src/index.ts"],
+      "@flow/canvas": ["packages/flow-canvas/src/index.ts"],
+      "@flow/dock": ["packages/flow-dock/src/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["apps", "packages", "vite.config.ts"]
+}

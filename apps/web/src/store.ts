@@ -1,0 +1,1156 @@
+/** 全局状态（zustand）：多图库 + 编辑器内容态 + 变量启用集合 + 自动保存（IDB）
+ *  库 = FlowDoc 存 IndexedDB「docs」；应用元数据（上次打开图）存「kv」。
+ *  编辑器只缓存当前打开的一份 FlowContent；变更 500ms debounce 落库。 */
+import { create } from 'zustand';
+import {
+  applyEdgeChanges,
+  applyNodeChanges,
+  addEdge,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type NodeChange,
+} from '@xyflow/react';
+import {
+  buildGraph,
+  deriveVariableCandidates,
+  estimateNodeSize,
+  layoutGraph,
+  PRESET_ASSIGNMENTS,
+  SAMPLE_EDGE_DEFS,
+  SAMPLE_NODE_DEFS,
+  edgeIdOf,
+  TALK_W_MAX,
+  TALK_W_MIN,
+  type Assignments,
+  type FlowMode,
+  type FlowView,
+  type NodeKind,
+} from '@flow/core';
+import { EDGE_TYPE_DEFAULT, type SopFlowNode } from '@flow/canvas';
+import { DOCS_STORE, KV_STORE, dbDelete, dbGet, dbGetAll, dbPut } from './idb';
+
+let uid = 1;
+const nextId = (prefix: string) => `${prefix}${Date.now().toString(36)}${uid++}`;
+
+/**
+ * 按指定视图跑一次 dagre，返回 nodeId -> position。
+ * 复用于 relayout / localRelayout / setView（首次进入某视图时自动整理）。
+ * 注意：布局尺寸必须按 view 走——结构层 h≈46，话术层 h≈rows*40+80，差别数倍。
+ */
+function layoutPositions(
+  nodes: SopFlowNode[],
+  edges: Edge[],
+  view: FlowView
+): Map<string, { x: number; y: number }> {
+  const coreNodes = nodes.map((n) => ({
+    id: n.id,
+    type: 'sop' as const,
+    position: { x: 0, y: 0 },
+    data: n.data,
+  }));
+  const coreEdges = edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    type: 'step' as const,
+    label: typeof e.label === 'string' ? e.label : '',
+  }));
+  const laid = layoutGraph(coreNodes, coreEdges, view);
+  return new Map(laid.map((n) => [n.id, n.position]));
+}
+
+/** 默认节点文案（US-01：步骤/决策/开始/结束） */
+export const NODE_PLACEHOLDER: Record<NodeKind, string> = {
+  step: '新步骤',
+  decision: '新决策？',
+  'io-start': '开始',
+  'io-end': '结束',
+};
+
+/* ============================================================
+ * 文档模型
+ * ============================================================ */
+export interface FlowContent {
+  nodes: SopFlowNode[];
+  edges: Edge[];
+  assignments: Assignments;
+  view: FlowView;
+  /** edit / scenario（view 是打开态，不入库） */
+  mode: 'edit' | 'scenario';
+  /** null=未初始化（兼容旧数据 → 全部候选启用）；[]=明确不启用 */
+  enabledVarNodeIds: string[] | null;
+  /** 本图新连线的默认样式 */
+  defaultEdgeType: string;
+}
+
+export interface FlowDoc {
+  id: string;
+  name: string;
+  /** 分组名，'' = 未分组 */
+  group: string;
+  createdAt: number;
+  updatedAt: number;
+  flow: FlowContent;
+}
+
+/** 文档 id（复用旧单图 localStorage 迁移入口也走这里） */
+export const docIdOf = () => `d${Date.now().toString(36)}${uid++}`;
+
+/** 新空白内容态（供「新建空白流程图」） */
+export function blankContent(): FlowContent {
+  return {
+    nodes: [],
+    edges: [],
+    assignments: {},
+    view: 'flow',
+    mode: 'edit',
+    enabledVarNodeIds: null,
+    defaultEdgeType: EDGE_TYPE_DEFAULT,
+  };
+}
+
+/* ============================================================
+ * 内容归一化（读库 / 导入 / 迁移共用）——脏字段剔除 + 悬挂引用清理
+ * ============================================================ */
+const VALID_KINDS = ['io-start', 'io-end', 'decision', 'step'];
+const VALID_EDGE_TYPES = new Set(['default', 'straight', 'step', 'smoothstep']);
+
+/** 节点自定义配色（null=用 kind 语义默认色）。仅存合法颜色串。 */
+export interface NodePaint {
+  bg?: string;
+  stroke?: string;
+  text?: string;
+}
+function cleanPaint(raw: unknown): NodePaint | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const out: NodePaint = {};
+  const isColor = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
+  if (isColor(o.bg)) out.bg = o.bg;
+  if (isColor(o.stroke)) out.stroke = o.stroke;
+  if (isColor(o.text)) out.text = o.text;
+  return Object.keys(out).length ? out : null;
+}
+
+function normalizeNode(raw: unknown): SopFlowNode | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const n = raw as Record<string, unknown>;
+  const d = (n.data ?? {}) as Record<string, unknown>;
+  if (typeof n.id !== 'string' || typeof d !== 'object' || d === null) return null;
+  const kind = VALID_KINDS.includes(d.kind as string) ? (d.kind as NodeKind) : 'step';
+  const talk = Array.isArray(d.talk)
+    ? (d.talk as unknown[])
+        .filter(
+          (t): t is { side: 'agent' | 'cust'; text: string } =>
+            !!t &&
+            typeof t === 'object' &&
+            ((t as Record<string, unknown>).side === 'agent' ||
+              (t as Record<string, unknown>).side === 'cust') &&
+            typeof (t as Record<string, unknown>).text === 'string'
+        )
+        .map((t) => ({ side: t.side, text: t.text }))
+    : [];
+  const pos = (n.position ?? {}) as Record<string, unknown>;
+  const color = cleanPaint(d.color);
+  /** Bug2：双视图坐标必须一起持久化，否则刷新后话术层布局丢失、又退回重叠 */
+  const posByView = cleanPosByView(n.posByView);
+  /** H 轮：话术卡片的角色名 / 左右方向 / 宽度，同样要持久化 */
+  const roles = cleanRoles(d.roles);
+  const talkDir = d.talkDir === 'agentRight' ? 'agentRight' : null;
+  const talkW =
+    Number.isFinite(Number(d.talkW)) && Number(d.talkW) >= TALK_W_MIN
+      ? Math.min(TALK_W_MAX, Math.round(Number(d.talkW)))
+      : null;
+  return {
+    id: n.id,
+    type: 'sop',
+    position: { x: Number(pos.x) || 0, y: Number(pos.y) || 0 },
+    ...(posByView ? { posByView } : {}),
+    data: {
+      label: typeof d.label === 'string' && d.label.trim() ? d.label : '未命名',
+      kind,
+      talk,
+      editing: false,
+      ...(color ? { color } : {}),
+      ...(roles ? { roles } : {}),
+      ...(talkDir ? { talkDir } : {}),
+      ...(talkW ? { talkW } : {}),
+    },
+    selected: false,
+  };
+}
+
+/** 清洗自定义说话方称呼：只收非空字符串，空值丢弃走默认「客服 / 客户」 */
+function cleanRoles(raw: unknown): { agent?: string; cust?: string } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const out: { agent?: string; cust?: string } = {};
+  (['agent', 'cust'] as const).forEach((k) => {
+    const v = o[k];
+    if (typeof v === 'string' && v.trim()) out[k] = v.trim().slice(0, 8);
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+/** 清洗双视图坐标：只保留合法数字对，脏数据丢弃（不要带 NaN 进画布） */
+function cleanPosByView(raw: unknown): SopFlowNode['posByView'] | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const out: Record<string, { x: number; y: number }> = {};
+  (['flow', 'talk'] as const).forEach((k) => {
+    const p = o[k] as Record<string, unknown> | undefined;
+    if (p && typeof p === 'object' && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y))) {
+      out[k] = { x: Number(p.x), y: Number(p.y) };
+    }
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+function normalizeEdge(raw: unknown): Edge | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const e = raw as Record<string, unknown>;
+  if (typeof e.source !== 'string' || typeof e.target !== 'string') return null;
+  const t = typeof e.type === 'string' && VALID_EDGE_TYPES.has(e.type) ? (e.type as string) : 'step';
+  return {
+    id: typeof e.id === 'string' && e.id ? e.id : edgeIdOf(e.source, e.target),
+    source: e.source,
+    target: e.target,
+    type: t,
+    label: typeof e.label === 'string' ? e.label : '',
+  };
+}
+
+/** 清洗「裸 JSON 内容态」→ 可用 FlowContent（null=结构不合法） */
+export function sanitizeContent(raw: unknown): FlowContent | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const s = raw as Record<string, unknown>;
+  if (!Array.isArray(s.nodes) || !Array.isArray(s.edges)) return null;
+  const nodes = (s.nodes as unknown[]).map(normalizeNode).filter((x): x is SopFlowNode => x !== null);
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  const edges = (s.edges as unknown[])
+    .map(normalizeEdge)
+    .filter((e): e is Edge => e !== null && nodeIds.has(e.source) && nodeIds.has(e.target));
+  const edgeIds = new Set(edges.map((e) => e.id));
+  const assignments: Assignments = {};
+  if (s.assignments && typeof s.assignments === 'object') {
+    Object.entries(s.assignments as Record<string, unknown>).forEach(([k, v]) => {
+      if (nodeIds.has(k) && typeof v === 'string' && edgeIds.has(v)) assignments[k] = v;
+    });
+  }
+  let enabled: string[] | null = null;
+  if (Array.isArray(s.enabledVarNodeIds)) {
+    enabled = (s.enabledVarNodeIds as unknown[]).filter(
+      (x): x is string => typeof x === 'string' && nodeIds.has(x)
+    );
+  } else if (Array.isArray(s.enabledVars)) {
+    enabled = (s.enabledVars as unknown[]).filter(
+      (x): x is string => typeof x === 'string' && nodeIds.has(x)
+    );
+  }
+  return {
+    nodes,
+    edges,
+    assignments,
+    view: s.view === 'talk' ? 'talk' : 'flow',
+    mode: s.mode === 'scenario' ? 'scenario' : 'edit',
+    enabledVarNodeIds: enabled,
+    defaultEdgeType:
+      typeof s.defaultEdgeType === 'string' && VALID_EDGE_TYPES.has(s.defaultEdgeType)
+        ? (s.defaultEdgeType as string)
+        : EDGE_TYPE_DEFAULT,
+  };
+}
+
+/** 旧 Build C 单图 localStorage（flow-app:v1）→ 库第一张图（迁移一次） */
+export const LEGACY_KEY = 'flow-app:v1';
+async function migrateLegacy(): Promise<void> {
+  const isBrowser = typeof window !== 'undefined' && typeof localStorage !== 'undefined';
+  if (!isBrowser) return;
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { state?: unknown };
+    const content = sanitizeContent((parsed as { state?: unknown })?.state ?? parsed);
+    if (!content || content.nodes.length === 0) {
+      localStorage.removeItem(LEGACY_KEY); // 空壳直接丢弃
+      return;
+    }
+    const title =
+      typeof (parsed as { state?: { title?: unknown } })?.state?.title === 'string'
+        ? ((parsed as { state?: { title?: unknown } }).state?.title as string)
+        : '迁移的流程图';
+    const doc: FlowDoc = {
+      id: docIdOf(),
+      name: title,
+      group: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      flow: content,
+    };
+    const docs = await dbGetAll<FlowDoc>(DOCS_STORE);
+    if (!docs.length) await dbPut(DOCS_STORE, doc); // 库为空才迁移，避免重复
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    /* 迁移失败静默，旧 key 保留等下次 */
+  }
+}
+
+/* ============================================================
+ * Store
+ * ============================================================ */
+export interface AppState {
+  /** 当前打开文档 id；null = 库首页 */
+  docId: string | null;
+  docName: string;
+  docGroup: string;
+  /** 只读查看态（view 模式打开） */
+  readonly: boolean;
+
+  nodes: SopFlowNode[];
+  edges: Edge[];
+  mode: FlowMode;
+  view: FlowView;
+  assignments: Assignments;
+  /** 变量启用集合（null=未初始化，全部候选） */
+  enabledVarNodeIds: string[] | null;
+  defaultEdgeType: string;
+  /** 新建菜单锚点（client 坐标），null=关闭 */
+  picker: { x: number; y: number } | null;
+  /** 应用就绪（IDB 打开 + 迁移 + 自动恢复上次图 完成） */
+  ready: boolean;
+
+  /* --- E1 撤销/重做（快照 JSON 栈，只覆盖图形内容）--- */
+  undoStack: string[];
+  redoStack: string[];
+  /* --- 编辑器运行时偏好（不入库）--- */
+  snapEnabled: boolean;
+  gridVisible: boolean;
+  /** 主题（B3/P1-F18） */
+  theme: 'light' | 'dark';
+  setTheme: (t: 'light' | 'dark') => void;
+  toggleTheme: () => void;
+
+  // --- 画布变更（RF 受控）---
+  onNodesChange: (changes: NodeChange<SopFlowNode>[]) => void;
+  onEdgesChange: (changes: EdgeChange<Edge>[]) => void;
+  onConnect: (conn: Connection) => void;
+
+  // --- 动作 ---
+  setMode: (m: FlowMode) => void;
+  setView: (v: FlowView) => void;
+  assign: (nodeId: string, edgeId: string) => void;
+  clearAssignments: () => void;
+  presetAssignments: () => void;
+  relayout: () => void;
+  /** 局部整理：只重排选中节点（在完整图布局中取其位置 + bbox 中心偏移补偿），入历史 */
+  localRelayout: () => void;
+  openPicker: (x: number, y: number) => void;
+  closePicker: () => void;
+  addNodeAt: (kind: NodeKind, x: number, y: number) => void;
+  renameEdge: (edgeId: string, label: string) => void;
+  afterDelete: (removedNodeIds: string[], removedEdgeIds: string[]) => void;
+  /** 拖拽连线端点改连（入历史） */
+  onReconnect: (oldEdge: Edge, conn: Connection) => void;
+  /** 记录一次「操作前」历史快照（几何动作/拖拽起点前调用） */
+  mark: () => void;
+  undo: () => void;
+  redo: () => void;
+  setSnap: (b: boolean) => void;
+  setGridVisible: (b: boolean) => void;
+  /** 对齐选中节点（≥2，以外接框为基准） */
+  alignSelected: (dir: 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom') => void;
+  /** 等距分布选中节点（≥3） */
+  distributeSelected: (axis: 'h' | 'v') => void;
+  /** 批量给节点上色（入历史由调用方控制） */
+  paintNodes: (nodeIds: string[], paint: NodePaint | null) => void;
+  /** 删除选中节点 + 关联边 + 赋值（入历史） */
+  deleteSelected: () => void;
+  /** 按 id 列表删除节点 + 关联边 + 赋值（右键菜单专用，入历史） */
+  deleteNodes: (ids: string[]) => void;
+  /** 转换节点 kind（右键菜单专用，io-start/io-end 唯一性约束，入历史） */
+  changeKind: (nodeId: string, kind: NodeKind) => void;
+  /** 点空白清空全部选中（不入历史） */
+  clearSelection: () => void;
+  /** 按方向键微调选中节点（入历史由调用方控制 repeat） */
+  nudgeSelected: (dx: number, dy: number) => void;
+  /** 清空当前图画布（入历史） */
+  clearCanvas: () => void;
+  /** 粘贴一组重映射后的节点/边（入历史） */
+  applyPaste: (nodes: SopFlowNode[], edges: Edge[]) => void;
+
+  /** 启动：IDB 迁移 + 恢复上次打开的图 */
+  boot: () => Promise<void>;
+
+  // --- 库操作（IDB）---
+  /** 打开文档。readonly=true → 只读查看（mode='view'）；false → 编辑打开（mode=doc.flow.mode） */
+  openDoc: (id: string, readonly?: boolean) => Promise<void>;
+  /** 返回库（保存由 autosave 承担）；清 kv activeDocId */
+  closeToLibrary: () => Promise<void>;
+  /** 用内容建一张新图并打开 */
+  createDoc: (name: string, group: string, content: FlowContent) => Promise<void>;
+  /** 从示例 SOP 模板新建（默认全启用变量，不弹引导） */
+  createSampleDoc: () => Promise<void>;
+  duplicateDoc: (id: string) => Promise<void>;
+  renameDoc: (id: string, name: string) => Promise<void>;
+  setDocGroup: (id: string, group: string) => Promise<void>;
+  deleteDoc: (id: string) => Promise<void>;
+
+  // --- 编辑器级动作 ---
+  setDocName: (name: string) => void;
+  setDefaultEdgeType: (t: string) => void;
+  setEdgeTypes: (edgeIds: string[], t: string) => void;
+  setEnabledVars: (nodeIds: string[]) => void;
+  toggleVarEnabled: (nodeId: string) => void;
+  exportJSON: () => string;
+  flushSave: () => void;
+}
+
+const emptyEditor = {
+  docId: null as string | null,
+  docName: '未命名流程',
+  docGroup: '',
+  readonly: false,
+  nodes: [] as SopFlowNode[],
+  edges: [] as Edge[],
+  mode: 'edit' as FlowMode,
+  view: 'flow' as FlowView,
+  assignments: {} as Assignments,
+  enabledVarNodeIds: null as string[] | null,
+  defaultEdgeType: EDGE_TYPE_DEFAULT,
+  picker: null as { x: number; y: number } | null,
+  ready: false,
+  undoStack: [] as string[],
+  redoStack: [] as string[],
+  snapEnabled: true,
+  gridVisible: true,
+  theme: 'light' as 'light' | 'dark',
+};
+
+export const useAppStore = create<AppState>((set, get) => ({
+  ...emptyEditor,
+
+  onNodesChange: (changes) => {
+    const removed = changes.filter((c) => c.type === 'remove').map((c) => c.id);
+    // 改名提交（editing:false 的 replace）→ 入历史；编辑中每键的 replace 不入
+    const commit = changes.some(
+      (c) =>
+        c.type === 'replace' &&
+        !!c.item &&
+        (c.item.data as { editing?: boolean } | undefined)?.editing === false &&
+        typeof (c.item.data as { label?: unknown }).label === 'string'
+    );
+    if (removed.length || commit) pushHistory();
+    set((st) => {
+      let nodes = applyNodeChanges(changes, st.nodes);
+      let edges = st.edges;
+      let assignments = st.assignments;
+      if (removed.length) {
+        edges = edges.filter((e) => !removed.includes(e.source) && !removed.includes(e.target));
+        assignments = Object.fromEntries(
+          Object.entries(assignments).filter(([k]) => !removed.includes(k))
+        );
+      }
+      return { nodes, edges, assignments };
+    });
+  },
+
+  onEdgesChange: (changes) => {
+    const removed = changes.filter((c) => c.type === 'remove').map((c) => c.id);
+    if (removed.length) pushHistory();
+    set((st) => {
+      let edges = applyEdgeChanges(changes, st.edges);
+      let assignments = st.assignments;
+      if (removed.length) {
+        assignments = Object.fromEntries(
+          Object.entries(assignments).filter(([, eid]) => !removed.includes(eid))
+        );
+      }
+      return { edges, assignments };
+    });
+  },
+
+  onConnect: (conn) => {
+    pushHistory();
+    set((st) => {
+      if (!conn.source || !conn.target) return st;
+      const dup = st.edges.some((e) => e.source === conn.source && e.target === conn.target);
+      if (dup) return st;
+      const edge: Edge = {
+        id: edgeIdOf(conn.source, conn.target),
+        source: conn.source,
+        target: conn.target,
+        type: st.defaultEdgeType,
+        label: '',
+      };
+      return { edges: addEdge(edge, st.edges) };
+    });
+  },
+
+  onReconnect: (oldEdge, conn) => {
+    pushHistory();
+    set((st) => ({
+      edges: st.edges.map((e) =>
+        e.id === oldEdge.id
+          ? {
+              ...e,
+              source: conn.source ?? e.source,
+              target: conn.target ?? e.target,
+              sourceHandle: conn.sourceHandle ?? e.sourceHandle,
+              targetHandle: conn.targetHandle ?? e.targetHandle,
+            }
+          : e
+      ),
+    }));
+  },
+
+  setMode: (m) => set({ mode: m }),
+
+  /**
+   * 切换视图（结构层 ⇄ 话术层）—— Bug2 修复：双视图独立坐标。
+   * 旧实现只切标记、共用 position：结构层按 h≈46 布局，切话术后卡片高数倍 → 必然重叠。
+   * 现在：离开旧视图时把坐标存进 posByView[旧]，进入新视图时取 posByView[新]；
+   *       首次进入某视图（无缓存 / 有未布局的新节点）自动跑一次 dagre，保证「一进去就是整理好的」。
+   */
+  setView: (v) =>
+    set((st) => {
+      if (st.view === v) return st;
+      const prev = st.view;
+      /** 1) 存档：当前坐标写回旧视图槽位 */
+      const saved = st.nodes.map((n) => ({
+        ...n,
+        posByView: {
+          ...(n.posByView ?? {}),
+          [prev]: { x: n.position.x, y: n.position.y },
+        },
+      }));
+      /** 2) 取档：缺坐标的节点（首次进入 / 新增）→ 用 dagre 在该视图下补齐 */
+      const missing = saved.filter((n) => !n.posByView?.[v]);
+      const posMap = missing.length ? layoutPositions(saved, st.edges, v) : null;
+      const nodes = saved.map((n) => {
+        const target = n.posByView?.[v] ?? posMap?.get(n.id) ?? n.position;
+        return {
+          ...n,
+          position: target,
+          posByView: { ...(n.posByView ?? {}), [v]: target },
+        };
+      });
+      return { view: v, nodes };
+    }),
+
+  assign: (nodeId, edgeId) =>
+    set((st) => {
+      const next = { ...st.assignments };
+      if (next[nodeId] === edgeId) delete next[nodeId];
+      else next[nodeId] = edgeId;
+      return { assignments: next };
+    }),
+
+  clearAssignments: () => set({ assignments: {} }),
+
+  presetAssignments: () => {
+    const { nodes, edges } = get();
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const edgeIds = new Set(edges.map((e) => e.id));
+    const valid: Assignments = {};
+    Object.entries(PRESET_ASSIGNMENTS).forEach(([k, v]) => {
+      if (nodeIds.has(k) && edgeIds.has(v)) valid[k] = v;
+    });
+    set({ assignments: valid });
+  },
+
+  relayout: () =>
+    set((st) => {
+      const coreNodes = st.nodes.map((n) => ({
+        id: n.id,
+        type: 'sop' as const,
+        position: { x: 0, y: 0 },
+        data: n.data,
+      }));
+      const coreEdges = st.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: 'step' as const,
+        label: typeof e.label === 'string' ? e.label : '',
+      }));
+      const laid = layoutGraph(coreNodes, coreEdges, st.view);
+      const posMap = new Map(laid.map((n) => [n.id, n.position]));
+      const nodes = st.nodes.map((n) => ({
+        ...n,
+        position: posMap.get(n.id) ?? n.position,
+      }));
+      return { nodes };
+    }),
+
+  /** 局部整理：完整图布局 → 取选中节点位置 → 用原/新 bbox 中心差做平移补偿，保证选中节点
+    看起来「原位整齐」而非跑到画布角。≥1 个选中才生效。 */
+  localRelayout: () =>
+    set((st) => {
+      const sel = st.nodes.filter((n) => n.selected);
+      if (sel.length < 1) return st;
+      const ids = new Set(sel.map((n) => n.id));
+      const coreNodes = st.nodes.map((n) => ({
+        id: n.id,
+        type: 'sop' as const,
+        position: { x: 0, y: 0 },
+        data: n.data,
+      }));
+      const coreEdges = st.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: 'step' as const,
+        label: typeof e.label === 'string' ? e.label : '',
+      }));
+      const laid = layoutGraph(coreNodes, coreEdges, st.view);
+      const posMap = new Map(laid.map((n) => [n.id, n.position]));
+      const oldCx = sel.reduce((a, n) => a + n.position.x, 0) / sel.length;
+      const oldCy = sel.reduce((a, n) => a + n.position.y, 0) / sel.length;
+      const newSel = sel.map((n) => posMap.get(n.id) ?? n.position);
+      const newCx = newSel.reduce((a, p) => a + p.x, 0) / newSel.length;
+      const newCy = newSel.reduce((a, p) => a + p.y, 0) / newSel.length;
+      const dx = oldCx - newCx;
+      const dy = oldCy - newCy;
+      pushHistory();
+      return {
+        nodes: st.nodes.map((n) =>
+          ids.has(n.id) && posMap.has(n.id)
+            ? { ...n, position: { x: posMap.get(n.id)!.x + dx, y: posMap.get(n.id)!.y + dy } }
+            : n
+        ),
+      };
+    }),
+
+  openPicker: (x, y) => set({ picker: { x, y } }),
+  closePicker: () => set({ picker: null }),
+
+  addNodeAt: (kind, x, y) => {
+    pushHistory();
+    set((st) => {
+      if (kind === 'io-start' || kind === 'io-end') {
+        if (st.nodes.some((n) => n.data?.kind === kind)) return st;
+      }
+      const label = NODE_PLACEHOLDER[kind] ?? '新步骤';
+      const node: SopFlowNode = {
+        id: nextId('n'),
+        type: 'sop',
+        position: { x, y },
+        data: {
+          label: kind === 'step' ? `${label} ${st.nodes.length + 1}` : label,
+          kind,
+          talk: [],
+          editing: true,
+        },
+      };
+      return { nodes: [...st.nodes, node], picker: null };
+    });
+  },
+
+  renameEdge: (edgeId, label) => {
+    pushHistory();
+    set((st) => ({
+      edges: st.edges.map((e) => (e.id === edgeId ? { ...e, label } : e)),
+    }));
+  },
+
+  afterDelete: (removedNodeIds, removedEdgeIds) =>
+    set((st) => ({
+      edges: st.edges.filter(
+        (e) =>
+          !removedNodeIds.includes(e.source) &&
+          !removedNodeIds.includes(e.target) &&
+          !removedEdgeIds.includes(e.id)
+      ),
+      assignments: Object.fromEntries(
+        Object.entries(st.assignments).filter(
+          ([nodeId, eid]) => !removedNodeIds.includes(nodeId) && !removedEdgeIds.includes(eid)
+        )
+      ),
+    })),
+
+  /* ---------- E1 历史栈 / 运行时偏好 ---------- */
+  mark: () => pushHistory(),
+  undo: () => doUndo(),
+  redo: () => doRedo(),
+  setSnap: (b) => set({ snapEnabled: b }),
+  setGridVisible: (b) => set({ gridVisible: b }),
+  setTheme: (t) => set({ theme: t }),
+  toggleTheme: () => set((st) => ({ theme: st.theme === 'dark' ? 'light' : 'dark' })),
+
+  /* ---------- E4/E5 几何与配色 ---------- */
+  alignSelected: (dir) => {
+    const st = useAppStore.getState();
+    if (st.readonly || st.mode !== 'edit') return;
+    const sel = st.nodes.filter((n) => n.selected);
+    if (sel.length < 2) return;
+    /** Q3 修复：按当前视图计算节点宽高，避免按 flow 尺寸对齐 talk 卡片 */
+    const wOf = (n: SopFlowNode) =>
+      estimateNodeSize({ id: n.id, type: 'sop', position: n.position, data: n.data }, st.view).w;
+    const hOf = (n: SopFlowNode) =>
+      estimateNodeSize({ id: n.id, type: 'sop', position: n.position, data: n.data }, st.view).h;
+    const xs = sel.map((n) => n.position.x);
+    const rights = sel.map((n) => n.position.x + wOf(n));
+    const ys = sel.map((n) => n.position.y);
+    const bottoms = sel.map((n) => n.position.y + hOf(n));
+    const minL = Math.min(...xs);
+    const maxR = Math.max(...rights);
+    const minT = Math.min(...ys);
+    const maxB = Math.max(...bottoms);
+    pushHistory();
+    set((s2) => ({
+      nodes: s2.nodes.map((n) => {
+        if (!n.selected) return n;
+        const w = wOf(n);
+        const h = hOf(n);
+        const p = { ...n.position };
+        if (dir === 'left') p.x = minL;
+        else if (dir === 'right') p.x = maxR - w;
+        else if (dir === 'centerX') p.x = (minL + maxR) / 2 - w / 2;
+        else if (dir === 'top') p.y = minT;
+        else if (dir === 'bottom') p.y = maxB - h;
+        else p.y = (minT + maxB) / 2 - h / 2;
+        return { ...n, position: p };
+      }),
+    }));
+  },
+
+  distributeSelected: (axis) => {
+    const st = useAppStore.getState();
+    if (st.readonly || st.mode !== 'edit') return;
+    const sel = st.nodes.filter((n) => n.selected);
+    if (sel.length < 3) return;
+    type Row = { id: string; lead: number; size: number };
+    const rows: Row[] = sel.map((n) => {
+      const sz = estimateNodeSize(
+        { id: n.id, type: 'sop', position: n.position, data: n.data },
+        st.view
+      );
+      return {
+        id: n.id,
+        lead: axis === 'h' ? n.position.x : n.position.y,
+        size: axis === 'h' ? sz.w : sz.h,
+      };
+    });
+    rows.sort((a, b) => a.lead - b.lead);
+    const first = rows[0];
+    const span =
+      rows[rows.length - 1].lead +
+      rows[rows.length - 1].size -
+      first.lead;
+    const inner = rows.reduce((m, r) => m + r.size, 0);
+    const gap = Math.max(0, (span - inner) / (rows.length - 1));
+    const target = new Map<string, number>();
+    let cur = first.lead;
+    rows.forEach((r, i) => {
+      target.set(r.id, cur);
+      if (i < rows.length - 1) cur += r.size + gap;
+    });
+    pushHistory();
+    set((s2) => ({
+      nodes: s2.nodes.map((n) => {
+        const t = target.get(n.id);
+        if (t === undefined) return n;
+        return axis === 'h'
+          ? { ...n, position: { ...n.position, x: t } }
+          : { ...n, position: { ...n.position, y: t } };
+      }),
+    }));
+  },
+
+  paintNodes: (nodeIds, paint) =>
+    set((st) => ({
+      nodes: st.nodes.map((n) => {
+        if (!nodeIds.includes(n.id)) return n;
+        if (!paint) {
+          const { color: _drop, ...rest } = n.data as SopFlowNode['data'] & { color?: unknown };
+          return { ...n, data: rest as SopFlowNode['data'] };
+        }
+        // 按 scope merge：只覆盖传入键，保留其余
+        const cur = ((n.data as { color?: NodePaint | null }).color ?? {}) as NodePaint;
+        return { ...n, data: { ...n.data, color: { ...cur, ...paint } } };
+      }),
+    })),
+
+  deleteSelected: () => {
+    pushHistory();
+    set((st) => {
+      const ids = new Set(st.nodes.filter((n) => n.selected).map((n) => n.id));
+      if (!ids.size) return st;
+      return {
+        nodes: st.nodes.filter((n) => !ids.has(n.id)),
+        edges: st.edges.filter((e) => !ids.has(e.source) && !ids.has(e.target)),
+        assignments: Object.fromEntries(
+          Object.entries(st.assignments).filter(([k]) => !ids.has(k))
+        ),
+      };
+    });
+  },
+
+  deleteNodes: (ids) => {
+    if (!ids.length) return;
+    const s = new Set(ids);
+    pushHistory();
+    set((st) => ({
+      nodes: st.nodes.filter((n) => !s.has(n.id)),
+      edges: st.edges.filter((e) => !s.has(e.source) && !s.has(e.target)),
+      assignments: Object.fromEntries(Object.entries(st.assignments).filter(([k]) => !s.has(k))),
+    }));
+  },
+
+  changeKind: (nodeId, kind) => {
+    pushHistory();
+    set((st) => {
+      if (kind === 'io-start' || kind === 'io-end') {
+        if (st.nodes.some((n) => n.id !== nodeId && n.data?.kind === kind)) return st;
+      }
+      return {
+        nodes: st.nodes.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, kind } } : n
+        ),
+      };
+    });
+  },
+
+  clearSelection: () =>
+    set((st) => {
+      const hasSel = st.nodes.some((n) => n.selected) || st.edges.some((e) => e.selected);
+      if (!hasSel) return st;
+      return {
+        nodes: st.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+        edges: st.edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+      };
+    }),
+
+  nudgeSelected: (dx, dy) =>
+    set((st) => ({
+      nodes: st.nodes.map((n) =>
+        n.selected ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } } : n
+      ),
+    })),
+
+  clearCanvas: () => {
+    pushHistory();
+    set({ nodes: [], edges: [], assignments: {}, picker: null, mode: 'edit' });
+  },
+
+  applyPaste: (pasteNodes, pasteEdges) => {
+    pushHistory();
+    set((st) => ({
+      nodes: [...st.nodes, ...pasteNodes],
+      edges: [...st.edges, ...pasteEdges],
+    }));
+  },
+
+  /* ---------- 启动 ---------- */
+  boot: async () => {
+    await migrateLegacy();
+    const active = await dbGet<{ key: string; value: string }>(KV_STORE, 'activeDocId');
+    if (active?.value) {
+      const doc = await dbGet<FlowDoc>(DOCS_STORE, active.value);
+      if (doc) {
+        set({
+          docId: doc.id,
+          docName: doc.name,
+          docGroup: doc.group,
+          readonly: false,
+          nodes: doc.flow.nodes,
+          edges: doc.flow.edges,
+          assignments: doc.flow.assignments,
+          view: doc.flow.view,
+          mode: doc.flow.mode,
+          enabledVarNodeIds: doc.flow.enabledVarNodeIds,
+          defaultEdgeType: doc.flow.defaultEdgeType,
+          undoStack: [],
+          redoStack: [],
+          ready: true,
+        });
+        return;
+      }
+    }
+    set({ ready: true });
+  },
+
+  /* ---------- 库操作 ---------- */
+  openDoc: async (id, readonly = false) => {
+    const doc = await dbGet<FlowDoc>(DOCS_STORE, id);
+    if (!doc) return;
+    set({
+      docId: doc.id,
+      docName: doc.name,
+      docGroup: doc.group,
+      readonly,
+      nodes: doc.flow.nodes,
+      edges: doc.flow.edges,
+      assignments: doc.flow.assignments,
+      view: doc.flow.view,
+      /**
+       * Bug1 修复：打开文档一律以「编辑」进入（非 readonly）。
+       * 旧实现恢复 doc.flow.mode：若上次停在「情景导航」，打开即 scenario，
+       * 话术层会退化成只读气泡，必须先手点「编辑画布」才能改话术——反直觉。
+       * 情景导航是临时演练态（赋值本就不入库），mode 不应持久化。
+       */
+      mode: readonly ? 'view' : 'edit',
+      enabledVarNodeIds: doc.flow.enabledVarNodeIds,
+      defaultEdgeType: doc.flow.defaultEdgeType,
+      undoStack: [],
+      redoStack: [],
+      picker: null,
+    });
+    await dbPut(KV_STORE, { key: 'activeDocId', value: doc.id });
+  },
+
+  closeToLibrary: async () => {
+    flushNow(get()); // 先落当前编辑内容
+    await dbDelete(KV_STORE, 'activeDocId');
+    set({ ...emptyEditor, ready: true });
+  },
+
+  createDoc: async (name, group, content) => {
+    const doc: FlowDoc = {
+      id: docIdOf(),
+      name: name || '未命名流程图',
+      group: group || '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      flow: content,
+    };
+    await dbPut(DOCS_STORE, doc);
+    await useAppStore.getState().openDoc(doc.id);
+  },
+
+  createSampleDoc: async () => {
+    const { nodes, edges } = buildGraph(SAMPLE_NODE_DEFS, SAMPLE_EDGE_DEFS);
+    const laid = layoutGraph(nodes, edges, 'flow');
+    // 示例模板：全部候选直接启用（语义完整，不弹识别引导）
+    const allVars = deriveVariableCandidates(nodes, edges).map((v) => v.nodeId);
+    const content: FlowContent = {
+      nodes: laid as unknown as SopFlowNode[],
+      edges: edges as unknown as Edge[],
+      assignments: {},
+      view: 'flow',
+      mode: 'edit',
+      enabledVarNodeIds: allVars,
+      defaultEdgeType: EDGE_TYPE_DEFAULT,
+    };
+    await useAppStore.getState().createDoc('司机接单客服 SOP', '模板', content);
+  },
+
+  duplicateDoc: async (id) => {
+    const doc = await dbGet<FlowDoc>(DOCS_STORE, id);
+    if (!doc) return;
+    const copy: FlowDoc = {
+      ...doc,
+      id: docIdOf(),
+      name: `${doc.name} 副本`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      flow: JSON.parse(JSON.stringify(doc.flow)) as FlowContent,
+    };
+    await dbPut(DOCS_STORE, copy);
+  },
+
+  renameDoc: async (id, name) => {
+    const doc = await dbGet<FlowDoc>(DOCS_STORE, id);
+    if (!doc) return;
+    await dbPut(DOCS_STORE, { ...doc, name: name || doc.name });
+    if (get().docId === id) set({ docName: name || doc.name });
+  },
+
+  setDocGroup: async (id, group) => {
+    const doc = await dbGet<FlowDoc>(DOCS_STORE, id);
+    if (!doc) return;
+    await dbPut(DOCS_STORE, { ...doc, group: group || '' });
+    if (get().docId === id) set({ docGroup: group || '' });
+  },
+
+  deleteDoc: async (id) => {
+    await dbDelete(DOCS_STORE, id);
+    if (get().docId === id) {
+      await dbDelete(KV_STORE, 'activeDocId');
+      set({ ...emptyEditor, ready: true });
+    }
+  },
+
+  /* ---------- 编辑器级 ---------- */
+  setDocName: (name) => {
+    const s = get();
+    const clean = name.trim();
+    if (!s.docId || !clean) return;
+    const docId = s.docId;
+    dbGet<FlowDoc>(DOCS_STORE, docId)
+      .then((doc) => (doc ? dbPut(DOCS_STORE, { ...doc, name: clean }) : undefined))
+      .catch(() => undefined);
+    set({ docName: clean });
+  },
+
+  setDefaultEdgeType: (t) => set({ defaultEdgeType: t }),
+  setEdgeTypes: (edgeIds, t) =>
+    set((st) => ({
+      edges: st.edges.map((e) => (edgeIds.includes(e.id) ? { ...e, type: t } : e)),
+    })),
+
+  setEnabledVars: (nodeIds) => set({ enabledVarNodeIds: nodeIds }),
+  toggleVarEnabled: (nodeId) =>
+    set((st) => {
+      const cur = new Set(st.enabledVarNodeIds ?? []);
+      if (cur.has(nodeId)) cur.delete(nodeId);
+      else cur.add(nodeId);
+      return { enabledVarNodeIds: [...cur] };
+    }),
+
+  exportJSON: () => {
+    const st = get();
+    const flow: FlowContent = {
+      nodes: st.nodes,
+      edges: st.edges,
+      assignments: st.assignments,
+      view: st.view,
+      mode: st.mode === 'scenario' ? 'scenario' : 'edit',
+      enabledVarNodeIds: st.enabledVarNodeIds,
+      defaultEdgeType: st.defaultEdgeType,
+    };
+    return JSON.stringify(
+      {
+        app: 'flow-app',
+        kind: 'backup',
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        title: st.docName,
+        state: flow,
+      },
+      null,
+      2
+    );
+  },
+
+  flushSave: () => flushNow(get()),
+}));
+
+/* ============================================================
+ * 自动保存：编辑器内容变化 → 500ms debounce 写入 docs[docId]
+ * ============================================================ */
+const isBrowser = typeof window !== 'undefined' && typeof indexedDB !== 'undefined';
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let dirty = false;
+
+/* ============================================================
+ * E1 撤销/重做：图形内容快照 JSON 栈（移动/改名/增删/连线/布局/配色/粘贴）
+ * ============================================================ */
+const HIST_LIMIT = 200;
+let lastMarkTs = 0;
+/** 记录一次「操作前」快照；只读 / 无图 / 距上次 <60ms（同批事件）跳过 */
+function pushHistory(): void {
+  const s = useAppStore.getState();
+  if (!s.docId || s.readonly) return;
+  const now = Date.now();
+  if (now - lastMarkTs < 60) {
+    lastMarkTs = now;
+    return;
+  }
+  const snap = snapshotOf(s);
+  if (!snap) return;
+  const json = JSON.stringify(snap);
+  lastMarkTs = now;
+  const stack = s.undoStack;
+  if (stack.length && stack[stack.length - 1] === json) return; // 无实际变化
+  const next = [...stack, json];
+  if (next.length > HIST_LIMIT) next.splice(0, next.length - HIST_LIMIT);
+  useAppStore.setState({ undoStack: next, redoStack: [] });
+}
+
+function applyContentJson(json: string): Partial<AppState> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return {};
+  }
+  const c = sanitizeContent(parsed);
+  if (!c) return {};
+  return {
+    nodes: c.nodes,
+    edges: c.edges,
+    assignments: c.assignments,
+    enabledVarNodeIds: c.enabledVarNodeIds,
+    defaultEdgeType: c.defaultEdgeType,
+  };
+}
+
+function doUndo(): void {
+  const s = useAppStore.getState();
+  if (!s.docId || !s.undoStack.length) return;
+  const prev = s.undoStack[s.undoStack.length - 1];
+  const cur = snapshotOf(s);
+  useAppStore.setState({
+    undoStack: s.undoStack.slice(0, -1),
+    redoStack: cur ? [...s.redoStack, JSON.stringify(cur)].slice(-HIST_LIMIT) : s.redoStack,
+    ...applyContentJson(prev),
+  });
+}
+
+function doRedo(): void {
+  const s = useAppStore.getState();
+  if (!s.docId || !s.redoStack.length) return;
+  const next = s.redoStack[s.redoStack.length - 1];
+  const cur = snapshotOf(s);
+  useAppStore.setState({
+    redoStack: s.redoStack.slice(0, -1),
+    undoStack: cur ? [...s.undoStack, JSON.stringify(cur)].slice(-HIST_LIMIT) : s.undoStack,
+    ...applyContentJson(next),
+  });
+}
+
+function snapshotOf(s: AppState): FlowContent | null {
+  if (!s.docId) return null;
+  return sanitizeContent({
+    nodes: s.nodes,
+    edges: s.edges,
+    assignments: s.assignments,
+    view: s.view,
+    mode: s.mode === 'scenario' ? 'scenario' : 'edit',
+    enabledVarNodeIds: s.enabledVarNodeIds,
+    defaultEdgeType: s.defaultEdgeType,
+  });
+}
+
+/** 立即落库（beforeunload / visibilitychange / 返回库 / 导入后）
+ *  只读查看态：演示赋值不入库（保持 doc 原样） */
+export function flushNow(s: AppState): void {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (!dirty) return;
+  dirty = false;
+  if (s.readonly) return;
+  const content = snapshotOf(s);
+  if (!content || !s.docId) return;
+  dbGet<FlowDoc>(DOCS_STORE, s.docId)
+    .then((doc) => {
+      if (!doc) return;
+      return dbPut(DOCS_STORE, { ...doc, updatedAt: Date.now(), flow: content });
+    })
+    .catch(() => undefined);
+}
+
+function scheduleSave(s: AppState) {
+  if (!s.docId) return;
+  dirty = true;
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    flushNow(useAppStore.getState());
+  }, 500);
+}
+
+if (isBrowser) {
+  window.addEventListener('beforeunload', () => flushNow(useAppStore.getState()));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushNow(useAppStore.getState());
+  });
+  // 编辑器内容态变更 → 节流落库（docId/readonly/ready/picker 瞬态不入快照）
+  useAppStore.subscribe((s) => {
+    scheduleSave(s);
+  });
+}

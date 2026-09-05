@@ -1,0 +1,12 @@
+{
+  "name": "@flow/canvas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "变量导航器 · React Flow 画布封装（节点 / 边 / 编辑器）",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "@xyflow/react": "^12.3.5",
+    "react": "^18.3.1"
+  }
+}

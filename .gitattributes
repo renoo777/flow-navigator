@@ -1,0 +1,11 @@
+# 跨平台换行符统一：仓库内一律 LF，避免三平台 CI 与 Rust 构建的换行符坑
+* text=auto eol=lf
+
+# Windows 批处理必须 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制
+*.png binary
+*.ico binary
+*.icns binary

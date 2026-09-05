@@ -1,0 +1,11 @@
+{
+  "name": "@flow/dock",
+  "version": "0.1.0",
+  "private": true,
+  "description": "变量导航器 · 左侧 Dock（变量列表 / 模式切换 / 动作）",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "react": "^18.3.1"
+  }
+}

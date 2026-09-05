@@ -1,0 +1,26 @@
+{
+  "name": "@flow/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "变量导航器 · Web 入口",
+  "type": "module",
+  "main": "src/main.tsx",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@flow/canvas": "*",
+    "@flow/core": "*",
+    "@flow/dock": "*",
+    "@tauri-apps/api": "^2.11.1",
+    "@xyflow/react": "^12.3.5",
+    "dagre": "^0.8.5",
+    "elkjs": "^0.12.0",
+    "html-to-image": "^1.11.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  }
+}
