@@ -107,7 +107,7 @@ git push origin v0.1.4
 - **首次在 GitHub Actions 发版前**，需在仓库 `Settings → Secrets and variables → Actions` 添加两个 Secret：
   - `TAURI_SIGNING_PRIVATE_KEY`：私钥文件**内容**
   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：生成私钥时设置的密码
-- 若仓库名/用户名不是 `flow-navigator` 与配置中的占位，同步改 `tauri.conf.json` 的 endpoint 再发版。
+- Fork 或改名后，需同步修改 `tauri.conf.json → plugins.updater.endpoints` 指向自己的仓库，否则自动更新仍会指向上游。
 
 ## 支持作者 · 打赏
 
