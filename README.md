@@ -94,8 +94,10 @@ npm run tauri:build  # 桌面端打包（产物在 src-tauri/target/release/bund
 # 2. 打 tag 即触发桌面端三平台构建（GitHub Actions），产物以 Draft Release 挂出
 git tag v0.1.4
 git push origin v0.1.4
-# 3. 到 Releases 页确认后点 Publish 对外发布
+# 3. 到 Releases 页确认后点 Publish 对外发布（**草稿态不计入 latest，自动更新不会生效**）
 #    —— 发布后已装用户的桌面版下次启动即自动收到更新（v0.1.4+ 支持）
+#    仓库：https://github.com/renoo777/flow-navigator ｜ Web 版：https://renoo777.github.io/flow-navigator/
+# 4. CI 若报 `'tauri' is not recognized`，是 workflow 缺 npm ci（已修复，勿删）
 ```
 
 ### 自动更新（updater）说明
