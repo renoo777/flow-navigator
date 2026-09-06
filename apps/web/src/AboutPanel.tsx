@@ -12,7 +12,7 @@ export const ABOUT_META = {
   /** 收货人提示——付款时校验一致再付，避免错付陌生人 */
   weixinNickname: 'renoo',
   alipayNickname: '周先生的小铺(*明)',
-  githubUser: 'ming-zhou', // 与 GitHub 实际一致，没有就先留占位
+  githubUser: 'renoo777', // GitHub 主页/Sponsors 账号（仓库 owner）
 } as const;
 
 type Platform = 'weixin' | 'alipay';
