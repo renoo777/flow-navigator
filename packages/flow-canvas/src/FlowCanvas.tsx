@@ -17,7 +17,6 @@ import {
   MarkerType,
   MiniMap,
   ReactFlow,
-  SelectionMode,
   useReactFlow,
   type Connection,
   type Edge,
@@ -68,9 +67,7 @@ export interface FlowCanvasProps {
   editable: boolean;
   /** 拖动开始时记录历史快照（E1） */
   onNodeDragStart?: () => void;
-  /* --- E4/E5 SelectionBar 动作 --- */
-  onAlignDir: (dir: 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom') => void;
-  onDistribute: (axis: 'h' | 'v') => void;
+  /* --- E5 SelectionBar 动作（配色 / 删除）--- */
   onPaintSel: (paint: NodePaint | null) => void;
   onDeleteSel: () => void;
   /* --- 右键菜单（B4：节点类型切换 + 删除）--- */
@@ -99,19 +96,17 @@ const PAINT_SWATCHES = [
 const SCOPE_LABEL: Record<string, string> = { bg: '底色', text: '文字', stroke: '边框' };
 const SCOPE_KEY: Record<string, keyof NodePaint> = { bg: 'bg', text: 'text', stroke: 'stroke' };
 
-/** 浮动工具条：选中 ≥1 节点时浮在选区上方（对齐 6 向 / 分布 / 配色 / 删除） */
+/** 浮动工具条：选中 ≥1 节点时浮在选区上方（配色 / 删除）。
+ *  v0.1.3 按用户反馈移除「对齐 6 向 / 横纵均分」——编辑重心转为白板拖拽，
+ *  精细对齐交给自动布局与手动摆放。 */
 function SelectionBar({
   nodes,
   editable,
-  onAlignDir,
-  onDistribute,
   onPaintSel,
   onDeleteSel,
 }: {
   nodes: SopFlowNode[];
   editable: boolean;
-  onAlignDir: FlowCanvasProps['onAlignDir'];
-  onDistribute: FlowCanvasProps['onDistribute'];
   onPaintSel: FlowCanvasProps['onPaintSel'];
   onDeleteSel: () => void;
 }) {
@@ -120,13 +115,7 @@ function SelectionBar({
   const [colorOpen, setColorOpen] = useState(false);
   const sel = useMemo(() => nodes.filter((n) => n.selected), [nodes]);
 
-  /** 浮动工具条：选中 ≥1 节点时浮在选区上方（对齐 6 向 / 分布 / 配色 / 删除）
-   * Q1 修复：disabled 灰按钮改为按选中数条件渲染——单选只显「颜色/删除」；2 选再显对齐；≥3 选再显均分。
-   * 同时取消 view==='flow' 限制，话术层亦可定位与重排。 */
-  const showAlign = sel.length >= 2;
-  const showDistribute = sel.length >= 3;
-  const showColorDel = sel.length >= 1;
-  if (!editable || !showColorDel) return null;
+  if (!editable || sel.length === 0) return null;
 
   const wOf = (n: SopFlowNode) => {
     const label = n.data?.label ?? '';
@@ -147,60 +136,19 @@ function SelectionBar({
   return (
     <div className="selbar" data-testid="selbar" style={{ left: anchor.x, top: anchor.y }}>
       <div className="sb-groups">
-        {showAlign && (
-          <>
-            <div className="sb-group">
-              {(
-                [
-                  ['left', '左', '左对齐'],
-                  ['centerX', '中', '水平居中'],
-                  ['right', '右', '右对齐'],
-                  ['top', '上', '顶对齐'],
-                  ['centerY', '中', '垂直居中'],
-                  ['bottom', '下', '底对齐'],
-                ] as const
-              ).map(([dir, txt, hint]) => (
-                <button
-                  key={dir}
-                  className="sb-btn"
-                  title={hint}
-                  onClick={() => onAlignDir(dir)}
-                >
-                  {txt}
-                </button>
-              ))}
-            </div>
-            {(showDistribute || showColorDel) && <div className="sb-sep" />}
-          </>
-        )}
-        {showDistribute && (
-          <>
-            <div className="sb-group">
-              <button className="sb-btn wide" title="水平等距分布" onClick={() => onDistribute('h')}>
-                横均分
-              </button>
-              <button className="sb-btn wide" title="垂直等距分布" onClick={() => onDistribute('v')}>
-                纵均分
-              </button>
-            </div>
-            {showColorDel && <div className="sb-sep" />}
-          </>
-        )}
-        {showColorDel && (
-          <div className="sb-group">
-            <button
-              className={`sb-btn color ${colorOpen ? 'on' : ''}`}
-              title="节点配色（底色/文字/边框）"
-              onClick={() => setColorOpen((v) => !v)}
-            >
-              <span className="sb-swatch-dot" style={{ background: (sel[0]?.data?.color as NodePaint | undefined)?.bg ?? '#fff' }} />
-              颜色
-            </button>
-            <button className="sb-btn danger" title="删除选中（Delete）" onClick={onDeleteSel}>
-              删除
-            </button>
-          </div>
-        )}
+        <div className="sb-group">
+          <button
+            className={`sb-btn color ${colorOpen ? 'on' : ''}`}
+            title="节点配色（底色/文字/边框）"
+            onClick={() => setColorOpen((v) => !v)}
+          >
+            <span className="sb-swatch-dot" style={{ background: (sel[0]?.data?.color as NodePaint | undefined)?.bg ?? '#fff' }} />
+            颜色
+          </button>
+          <button className="sb-btn danger" title="删除选中（Delete）" onClick={onDeleteSel}>
+            删除
+          </button>
+        </div>
       </div>
       {colorOpen && (
         <div className="color-pop" data-testid="color-pop">
@@ -252,16 +200,18 @@ const GUIDE_SECTIONS: { title: string; rows: [string, string][] }[] = [
     ],
   },
   {
-    title: '选择',
+    title: '选择与移动',
     rows: [
-      ['左键拖', '框选多个'],
-      ['中键拖', '平移画布'],
-      ['滚轮', '缩放'],
+      ['拖空白', '框选多个'],
+      ['Shift / Ctrl+单击', '加选 / 减选'],
+      ['空格 / 右键 + 拖', '平移画布'],
+      ['滚轮 / 双指滑动', '上下左右滚动'],
+      ['Ctrl+滚轮 / 双指捏合', '放大缩小'],
       ['双击连线', '给出口改名'],
     ],
   },
   {
-    title: '链路',
+    title: '链路（情景导航）',
     rows: [
       ['单击节点', '高亮上下游'],
       ['再点一次', '全链路 ⇄ 相邻'],
@@ -325,8 +275,6 @@ export function FlowCanvas({
   defaultEdgeType,
   editable,
   onNodeDragStart,
-  onAlignDir,
-  onDistribute,
   onPaintSel,
   onDeleteSel,
   onChangeKind,
@@ -669,7 +617,10 @@ export function FlowCanvas({
     });
   }, []);
 
-  /* 单击节点：首次高亮全链路；再点同一节点 → 全链路 ⇄ 相邻；点别处 → 换起点 */
+  /* 单击节点：
+   *  - 情景导航 / 只读浏览：点亮整条上下游链（Build K 追踪——阅读辅助）
+   *  - 编辑态：仅 React Flow 原生选中该节点自己（Build N —— 不再误触全链高亮；
+   *    进入编辑用双击：改名/属性/话术都在节点本体与右键菜单） */
   const handleNodeClick = useCallback((_e: unknown, node: SopFlowNode) => {
     setChain((cur) =>
       cur && cur.id === node.id
@@ -857,7 +808,7 @@ export function FlowCanvas({
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
+        onNodeClick={mode === 'edit' ? undefined : handleNodeClick}
         onConnect={editable ? onConnect : undefined}
         onReconnect={editable ? onReconnect : undefined}
         edgesReconnectable={editable}
@@ -879,9 +830,20 @@ export function FlowCanvas({
         nodesDraggable={editable}
         nodesConnectable={editable}
         elementsSelectable
+        /* 交互模型（v0.1.3 · 回归主流画板，调研结论：飞书/Figma/Miro 均左键拖=框选）
+         *  - 空白处按住左键拖动 = 框选多个节点（selectionOnDrag；只读浏览态退回左键拖=平移）
+         *  - 平移画布 = 空格+左键拖 / 鼠标中键拖 / 鼠标右键拖（panOnDrag 数组 [1,2]：右键+中键；空格临时平移由 RF 内建）
+         *  - 滚轮/触控板双指滑动 = 上下左右滚动画布（panOnScroll）
+         *  - Ctrl+滚轮 / 触控板双指捏合 = 缩放（zoomOnPinch 拦截 ctrl+wheel 转 zoom）
+         *  - 节点：单击只选中它自己（编辑态不再点亮上下游链），双击进入原地改名 */
         selectionOnDrag={editable}
-        selectionMode={SelectionMode.Partial}
         panOnDrag={editable ? [1, 2] : true}
+        panOnScroll
+        panOnScrollSpeed={1}
+        zoomOnScroll={false}
+        zoomOnPinch
+        zoomActivationKeyCode="Control"
+        multiSelectionKeyCode={['Shift', 'Control']}
         deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
         snapToGrid={editable && snapToGrid}
         snapGrid={[16, 16]}
@@ -1028,12 +990,10 @@ export function FlowCanvas({
         </div>
       )}
 
-      {/* E4 多选浮动工具条 */}
+      {/* E4 多选浮动工具条（配色 / 删除） */}
       <SelectionBar
         nodes={displayedNodes}
         editable={editable}
-        onAlignDir={onAlignDir}
-        onDistribute={onDistribute}
         onPaintSel={onPaintSel}
         onDeleteSel={onDeleteSel}
       />

@@ -50,13 +50,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 更新签名私钥（v0.1.4 自动更新）：在仓库 Settings → Secrets 里配置，
+          # 值 = 私钥文件内容 与 生成时的密码（本机 ~/.tauri/flow-navigator.key）
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: 'Flow Navigator v__VERSION__'
           releaseBody: '桌面安装包：Windows（exe/msi）· macOS（dmg，Intel 与 Apple Silicon）· Linux（deb/AppImage）。下载对应平台安装包即可，数据保存在本机。'
           releaseDraft: true
           prerelease: false
+          # 自动更新：把 latest.json（各平台签名+下载地址清单）作为 Release 资产上传，
+          # 已装用户启动时即读取它检查更新。preferNsis 保证 Windows 更新走 NSIS（MSI 不支持自更新）
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}

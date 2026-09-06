@@ -1509,6 +1509,191 @@ body::before {
 }
 
 /* ============================================================
+ * 关于 / 支持作者面板（打赏双码）
+ * 设计取舍：
+ *  - 复用 .modal/.modal-overlay/.modal-head，零新视觉骨架
+ *  - 双码卡片用 grid 自适应：宽屏左右并排（看码 > 解码都更顺手），
+ *    窄屏回落上下；图片区加圆角与细线，与【运输成本与耗时】"合并式"气质一致
+ *  - 按钮颜色全部走 ghost 体系，不引入新的 primary 红/橙/绿，
+ *    让"❤ 支持作者"在 Dock 底部不抢主流程风头
+ * ============================================================ */
+.ab-body { padding: 4px 2px 6px; }
+
+/* 顶部一行：作者署名 + GitHub 链接 + Sponsor */
+.ab-byline {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 2px 10px;
+  border-bottom: 1px dashed var(--hairline);
+  margin-bottom: 12px;
+}
+.ab-byline-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-3);
+}
+.ab-byline-name {
+  font-size: 14px; font-weight: 650; color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+.ab-byline-sep { color: var(--ink-4); font-size: 12px; }
+.ab-byline-link {
+  font-size: 12.5px; color: var(--accent); text-decoration: none;
+  border-radius: 5px;
+  transition: color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+  padding: 1px 5px;
+}
+.ab-byline-link:hover { background: var(--accent-soft); color: var(--accent-hover); }
+
+/* 一句话引导：温和、不施压、不会让用户产生"我是不是必须打赏"的不适感 */
+.ab-pitch {
+  margin: 0 0 14px;
+  font-size: 12.5px; line-height: 1.65; color: var(--ink-2);
+}
+
+/* 双码网格：宽屏左右并排，≤560px 退回上下 */
+.ab-qr-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 560px) {
+  .ab-qr-grid { grid-template-columns: 1fr; }
+}
+
+.ab-qr-card {
+  display: flex; flex-direction: column; align-items: stretch;
+  border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px 12px 12px;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.ab-qr-card:hover { border-color: var(--hairline-strong); box-shadow: var(--shadow-sm); }
+
+.ab-qr-title {
+  font-size: 13px; font-weight: 600; color: var(--ink-1);
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+/* 平台色圆点 —— 微信绿/支付宝蓝 仅作语义点缀，避免品牌全彩铺面 */
+.ab-qr-card[data-platform='weixin'] .ab-qr-title::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: #1aad19;
+}
+.ab-qr-card[data-platform='alipay'] .ab-qr-title::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: #1677ff;
+}
+
+/* 图片区：白底 + 圆角 + 细线 —— 二维码要的是"绝对清晰"，不上 glass */
+.ab-qr-frame {
+  display: flex; justify-content: center;
+  background: #ffffff; border-radius: 8px;
+  border: 1px solid var(--hairline);
+  padding: 10px;
+  aspect-ratio: 1 / 1;
+}
+.ab-qr-img {
+  width: 100%; height: 100%; max-width: 220px;
+  object-fit: contain; display: block;
+  -webkit-user-drag: element; user-select: none;
+}
+
+/* 底部一行：收款人备注 + 复制按钮 */
+.ab-qr-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 8px;
+}
+.ab-qr-nick {
+  font-size: 11.5px; color: var(--ink-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.ab-iconbtn {
+  flex: 0 0 auto;
+  border: 1px solid var(--hairline); background: var(--surface-1);
+  color: var(--ink-2); font-size: 11.5px;
+  padding: 3px 9px; border-radius: 6px; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.ab-iconbtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* 保存原图——独立一行小按钮，悬停在卡片底部 */
+.ab-qr-save {
+  display: block; text-align: center; margin-top: 8px;
+  font-size: 11px; color: var(--ink-3);
+  text-decoration: none; padding: 4px 0;
+  border-top: 1px dashed var(--hairline);
+}
+.ab-qr-save:hover { color: var(--accent); }
+
+/* 费用声明（一行小字） */
+.ab-foot-note {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 10px; font-size: 10.5px; color: var(--ink-3);
+  line-height: 1.5;
+}
+.ab-foot-note span:first-child { color: var(--ink-2); }
+
+/* 版本行 + 检查更新（v0.1.4 自动更新）：弱化排版，靠右一条细分隔 */
+.ab-version-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px dashed var(--hairline);
+}
+.ab-ver-label { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ab-ver-browser-hint { font-size: 10.5px; color: var(--ink-4); }
+.ab-update-btn {
+  border: 1px solid var(--hairline); background: var(--surface-2);
+  color: var(--ink-2); font-size: 11px; line-height: 1;
+  padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.ab-update-btn:hover:not(:disabled) {
+  border-color: var(--accent); color: var(--accent-hover); background: var(--accent-soft);
+}
+.ab-update-btn:disabled { opacity: 0.55; cursor: default; }
+[data-theme='dark'] .ab-update-btn { background: var(--surface-2); border-color: var(--hairline-strong); }
+
+/* 主页标题旁「支持作者」按钮（v0.1.3：从编辑 Dock 迁到流程图库标题旁）
+ * 胶囊小按钮，与 lib-brand 标题同一行，不抢「新建流程图」主按钮风头 */
+.lib-title-row { display: flex; align-items: center; gap: 10px; }
+.lib-about-btn {
+  border: 1px solid var(--hairline); background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 11.5px; line-height: 1;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.lib-about-btn:hover {
+  border-color: #f5b8b0; color: var(--danger);
+  background: #fff7f6;
+}
+/* 心形小图标，CSS 画的，与其它线性图标气质一致 */
+.lib-about-btn .heart {
+  display: inline-block; width: 11px; height: 11px;
+  background: currentColor;
+  -webkit-mask: radial-gradient(circle at 30% 30%, #000 28%, transparent 30%) no-repeat -2px 1px/8px 8px,
+                radial-gradient(circle at 70% 30%, #000 28%, transparent 30%) no-repeat 4px 1px/8px 8px,
+                linear-gradient(#000 0 0) no-repeat center/12px 8px;
+          mask: radial-gradient(circle at 30% 30%, #000 28%, transparent 30%) no-repeat -2px 1px/8px 8px,
+                radial-gradient(circle at 70% 30%, #000 28%, transparent 30%) no-repeat 4px 1px/8px 8px,
+                linear-gradient(#000 0 0) no-repeat center/12px 8px;
+}
+
+/* 暗色适配 —— 双码图片保持白底（识别精度），仅外壳换色 */
+[data-theme='dark'] .ab-qr-frame { background: #ffffff; border-color: #d0d4dc; }
+[data-theme='dark'] .ab-qr-card { background: var(--surface-1); border-color: var(--hairline-strong); }
+[data-theme='dark'] .ab-iconbtn { background: var(--surface-2); }
+[data-theme='dark'] .ab-iconbtn:hover { background: var(--surface-3); }
+[data-theme='dark'] .lib-about-btn { background: var(--surface-2); border-color: var(--hairline-strong); }
+[data-theme='dark'] .lib-about-btn:hover {
+  background: #2b1a1a;
+  border-color: #6a3030;
+  color: #fca5a5;
+}
+
+/* ============================================================
  * 拖拽对齐参考线（Build L）：FigJam 同款 smart guides
  * ============================================================ */
 .align-guides {

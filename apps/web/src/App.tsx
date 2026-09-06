@@ -130,12 +130,9 @@ function EditorScreen() {
     redo,
     setSnap,
     setGridVisible,
-    alignSelected,
-    distributeSelected,
     paintNodes,
     deleteSelected,
     clearSelection,
-    clearCanvas,
     changeKind,
     deleteNodes,
     toggleTheme,
@@ -388,14 +385,6 @@ function EditorScreen() {
     URL.revokeObjectURL(url);
   }, [exportJSON, docName]);
 
-  const handleClearCanvas = useCallback(() => {
-    if (
-      window.confirm('清空当前流程图的全部节点、连线与赋值？\n（可 Ctrl+Z 撤销，建议先「导出 JSON」备份）')
-    ) {
-      clearCanvas();
-    }
-  }, [clearCanvas]);
-
   const handleBack = useCallback(() => {
     /* B7：回库前先清 URL，否则 B7 的 docId 监听 useEffect 会因 URL 仍有 ?doc 而反向打开 */
     if (typeof window !== 'undefined') {
@@ -488,7 +477,6 @@ function EditorScreen() {
         onShareCard={() => void handleShareCard()}
         onToggleTheme={toggleTheme}
         theme={themeVal}
-        onClearCanvas={handleClearCanvas}
         canUndo={undoStack.length > 0}
         canRedo={redoStack.length > 0}
         onUndo={undo}
@@ -501,7 +489,6 @@ function EditorScreen() {
         onLocalLayout={handleLocalLayout}
         selectedCount={selectedCount}
       />
-
       <main className="canvas">
         {nodes.length === 0 && (
           <div className="canvas-empty" data-testid="empty-hint">
@@ -536,8 +523,6 @@ function EditorScreen() {
           defaultEdgeType={defaultEdgeType}
           editable={canEditGraph}
           onNodeDragStart={mark}
-          onAlignDir={alignSelected}
-          onDistribute={distributeSelected}
           onPaintSel={handlePaintSel}
           onDeleteSel={deleteSelected}
           onChangeKind={changeKind}

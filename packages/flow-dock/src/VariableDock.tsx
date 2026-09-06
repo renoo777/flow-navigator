@@ -48,8 +48,6 @@ export interface DockProps {
   onExportPng: () => void;
   /** Build K-③ · 1200×630 社交分享卡导出 */
   onShareCard: () => void;
-  /** 清空当前图画布 */
-  onClearCanvas: () => void;
   /** B3 主题切换 */
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
@@ -110,7 +108,6 @@ export function VariableDock({
   onExport,
   onExportPng,
   onShareCard,
-  onClearCanvas,
   theme,
   onToggleTheme,
   canUndo,
@@ -378,16 +375,6 @@ export function VariableDock({
         >
           分享图
         </button>
-        {editable && (
-          <button
-            className="ghost danger"
-            onClick={onClearCanvas}
-            disabled={nodesCount === 0}
-            title="清空当前流程图的全部节点与赋值（可先导出备份）"
-          >
-            清空画布
-          </button>
-        )}
       </div>
     </aside>
   );

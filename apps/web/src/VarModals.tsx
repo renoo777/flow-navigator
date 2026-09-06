@@ -38,7 +38,7 @@ function CandidateRows({
   );
 }
 
-function ModalShell({
+export function ModalShell({
   title,
   subtitle,
   onClose,

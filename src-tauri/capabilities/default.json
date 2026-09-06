@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Flow Navigator 默认权限：仅开放窗口与 WebView 核心能力，不开放文件系统、shell、网络等系统级接口",
+  "description": "Flow Navigator 默认权限：仅开放窗口与 WebView 核心能力 + 自动更新/重启，不开放文件系统、shell、网络等系统级接口",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "process:default",
+    "dialog:default"
+  ]
 }

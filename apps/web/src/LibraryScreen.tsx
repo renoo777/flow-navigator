@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveVariables } from '@flow/core';
 import { DOCS_STORE, dbGetAll } from './idb';
 import { blankContent, sanitizeContent, useAppStore, type FlowDoc } from './store';
+import { AboutPanel } from './AboutPanel';
+import { autoCheckUpdates } from './useUpdater';
 
 const UNGROUPED = '未分组';
 
@@ -58,6 +60,8 @@ export function LibraryScreen() {
   const [renameText, setRenameText] = useState('');
   /** 文档搜索（B6）：按 name 不区分大小写匹配 */
   const [query, setQuery] = useState('');
+  /** 关于/支持作者面板（打赏双码 + 署名）——入口在主页标题旁 */
+  const [aboutOpen, setAboutOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const openDoc = useAppStore((s) => s.openDoc);
@@ -76,6 +80,11 @@ export function LibraryScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /** 桌面版：启动进入主页时自动检查一次更新（浏览器环境 no-op，静默失败） */
+  useEffect(() => {
+    void autoCheckUpdates();
+  }, []);
 
   /** pop-menu click-away：点击浮层/「⋯」按钮之外、Esc、滚动或缩放窗口即关闭 */
   useEffect(() => {
@@ -215,7 +224,19 @@ export function LibraryScreen() {
     <div className="lib">
       <header className="lib-head">
         <div className="lib-brand">
-          <h1 className="lib-title">变量导航器</h1>
+          <div className="lib-title-row">
+            <h1 className="lib-title">变量导航器</h1>
+            <button
+              className="lib-about-btn"
+              onClick={() => setAboutOpen(true)}
+              data-testid="open-about"
+              title="关于本软件 · 请作者喝杯咖啡"
+              aria-label="打开关于/支持作者面板"
+            >
+              <span className="heart" aria-hidden="true" />
+              支持作者
+            </button>
+          </div>
           <div className="lib-sub">复杂流程图按变量拆解成可演示情景 · 数据仅存本机浏览器</div>
         </div>
         <div className="lib-search">
@@ -252,6 +273,9 @@ export function LibraryScreen() {
           onChange={(e) => handleImportFile(e.target.files?.[0])}
         />
       </header>
+
+      {/* 关于 / 支持作者（含打赏双码），主页专属入口 */}
+      {aboutOpen && <AboutPanel onClose={() => setAboutOpen(false)} />}
 
       {docs.length === 0 ? (
         <div className="lib-empty" data-testid="lib-empty">
