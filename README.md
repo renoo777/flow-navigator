@@ -51,7 +51,8 @@
 
 ### 在线版
 
-无需安装，直接打开：**https://renoo777.github.io/flow-navigator/**（GitHub Pages，main 分支更新即自动部署）
+无需安装，直接打开：**https://renoo777.github.io/flow-navigator/**
+（GitHub Pages，main 分支更新即自动部署）
 
 > 在线版与桌面版一样：数据只存本机浏览器，不上传服务器、无需注册。
 
