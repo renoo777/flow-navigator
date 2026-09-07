@@ -1,5 +1,4 @@
 /** 示例流程：司机接单客服 SOP —— 数据直接取自 interactive-flow-builder.html 的 SAMPLE_DEF */
-import type { Assignments } from './types';
 import type { EdgeDef, NodeDef } from './engine';
 
 export const SAMPLE_NAME = '司机接单客服 SOP';
@@ -91,10 +90,3 @@ export const SAMPLE_EDGE_DEFS: EdgeDef[] = [
   { s: 'ok1', t: 'e', label: '' },
   { s: 'nt1', t: 'e', label: '' },
 ];
-
-/** 一键示例赋值：走「有报价 → 同意报价 → 不会操作」的深路径，演示高亮与灰显 */
-export const PRESET_ASSIGNMENTS: Assignments = {
-  d1: 'd1->a1',
-  d2: 'd2->y2',
-  d3: 'd3->no1',
-};

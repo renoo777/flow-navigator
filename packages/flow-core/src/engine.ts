@@ -7,6 +7,7 @@ import type {
   FlowVariable,
   FlowView,
   ScenarioResult,
+  ScenarioStep,
 } from './types';
 import { TALK_W_MAX, TALK_W_MIN, TALK_W_DEFAULT } from './types';
 
@@ -23,16 +24,129 @@ function outgoingByNode(edges: FlowEdge[]): Record<string, FlowEdge[]> {
 }
 
 /**
- * 情景演算：给定变量取值，从「无入边起点」深度遍历出情景子图。
- * - 非决策节点：所有出口都走
- * - 决策节点：只走选中出口；未赋值 → 停在该节点（pending，不继续下钻）
- * - 走不到的决策变量 → naVars（N/A）
+ * Tarjan 强连通分量（迭代版，避免深图递归爆栈）。
+ * 返回分量数组，每个分量是节点 id 数组。
+ */
+export function stronglyConnectedComponents(ids: string[], adj: Record<string, string[]>): string[][] {
+  const index: Record<string, number> = {};
+  const low: Record<string, number> = {};
+  const onStack: Record<string, boolean> = {};
+  const stack: string[] = [];
+  const comps: string[][] = [];
+  let counter = 0;
+
+  for (const root of ids) {
+    if (index[root] !== undefined) continue;
+    /* 显式栈模拟递归：frame = [节点, 邻接游标] */
+    const frames: { v: string; i: number }[] = [{ v: root, i: 0 }];
+    index[root] = low[root] = counter++;
+    stack.push(root);
+    onStack[root] = true;
+
+    while (frames.length) {
+      const f = frames[frames.length - 1];
+      const neighbours = adj[f.v] ?? [];
+      if (f.i < neighbours.length) {
+        const w = neighbours[f.i++];
+        if (index[w] === undefined) {
+          index[w] = low[w] = counter++;
+          stack.push(w);
+          onStack[w] = true;
+          frames.push({ v: w, i: 0 });
+        } else if (onStack[w]) {
+          low[f.v] = Math.min(low[f.v], index[w]);
+        }
+      } else {
+        frames.pop();
+        if (frames.length) {
+          const p = frames[frames.length - 1].v;
+          low[p] = Math.min(low[p], low[f.v]);
+        }
+        if (low[f.v] === index[f.v]) {
+          const comp: string[] = [];
+          for (;;) {
+            const w = stack.pop()!;
+            onStack[w] = false;
+            comp.push(w);
+            if (w === f.v) break;
+          }
+          comps.push(comp);
+        }
+      }
+    }
+  }
+  return comps;
+}
+
+/**
+ * 图的入口（起点）节点集合。优先级：
+ *  1. 显式开始节点（kind = io-start）
+ *  2. SCC 缩点后「入度为 0 的源分量」中，来自分量外的入边数也是 0 的那些节点
+ *
+ * 为什么不能直接取「无入边节点」：只要图里存在孤立的旁支节点（没有入边也不在主流程上），
+ * 它就会独占入口资格，主流程（尤其带返工回路的那部分）被整体判为不可达 → 变量全变 N/A
+ * → 侧栏按钮禁用 → 用户彻底无法赋值（真实死锁，飞书导入的图节点顺序随机时必现）。
+ * SCC 缩点把整个环视为一个节点，环上任一入口都能走通全环，因此不会漏。
+ */
+export function findEntryNodes(nodes: FlowNode[], edges: FlowEdge[]): string[] {
+  if (!nodes.length) return [];
+  const starts = nodes.filter((n) => n.data?.kind === 'io-start').map((n) => n.id);
+  if (starts.length) return starts;
+
+  const ids = nodes.map((n) => n.id);
+  const adj: Record<string, string[]> = {};
+  ids.forEach((id) => {
+    adj[id] = [];
+  });
+  edges.forEach((e) => {
+    if (adj[e.source] && adj[e.target] !== undefined) adj[e.source].push(e.target);
+  });
+  const comps = stronglyConnectedComponents(ids, adj);
+  const compOf: Record<string, number> = {};
+  comps.forEach((c, i) => c.forEach((id) => (compOf[id] = i)));
+
+  /* 分量入度（跨分量的边）与节点外部入度（起点不在本分量的边） */
+  const compInDeg = comps.map(() => 0);
+  const nodeExternalInDeg: Record<string, number> = {};
+  ids.forEach((id) => (nodeExternalInDeg[id] = 0));
+  edges.forEach((e) => {
+    const a = compOf[e.source];
+    const b = compOf[e.target];
+    if (a === undefined || b === undefined) return;
+    if (a !== b) compInDeg[b] += 1;
+    nodeExternalInDeg[e.target] = (nodeExternalInDeg[e.target] ?? 0) + (a === b ? 0 : 1);
+  });
+
+  const entries = ids.filter(
+    (id) => compInDeg[compOf[id]] === 0 && (nodeExternalInDeg[id] ?? 0) === 0
+  );
+  if (!entries.length) return [ids[0]];
+  /* 每个源分量只取一个代表（数组序第一个）：环是强连通的，任一入口都能走遍全环；
+     若把环内所有节点都当起点，同一变量会被多路重复到达，决策序列被误耗尽 → 误报 pending */
+  const seenComp = new Set<number>();
+  return entries.filter((id) => {
+    const c = compOf[id];
+    if (seenComp.has(c)) return false;
+    seenComp.add(c);
+    return true;
+  });
+}
+
+/**
+ * 情景演算：给定决策序列，从入口节点深度遍历出情景子图。
+ * - 非决策节点：所有出口都走（同一节点重复经过时不再重复展开）
+ * - 决策节点：第 k 次经过时取决策序列里该节点的第 k 条出口（支持回路上
+ *   「第一次打回、第二次通过」这种同一判断点多次不同选择）；无对应决策 →
+ *   停在该节点（pending，不继续下钻）
+ * - 走不到的决策变量 → naVars（未经过）
+ * 终止性：每次经过变量节点消耗一条决策，决策序列有限 → 必然停机。
+ * 第 4 参兼容旧的 Assignments（每节点一条，顺序即变量声明序）。
  */
 export function computeScenario(
   nodes: FlowNode[],
   edges: FlowEdge[],
   variables: FlowVariable[],
-  assignments: Assignments
+  picks: ScenarioStep[] | Assignments
 ): ScenarioResult {
   const out = outgoingByNode(edges);
   const varByNode: Record<string, FlowVariable> = {};
@@ -40,30 +154,44 @@ export function computeScenario(
     varByNode[v.nodeId] = v;
   });
 
-  const hasIn: Record<string, boolean> = {};
-  edges.forEach((e) => {
-    hasIn[e.target] = true;
-  });
-  const starters = nodes.filter((n) => !hasIn[n.id]).map((n) => n.id);
-  if (!starters.length && nodes.length) starters.push(nodes[0].id);
+  /* 决策序列 → 每节点按经过次序排列的出口选择表 */
+  const picksByNode: Record<string, string[]> = {};
+  if (Array.isArray(picks)) {
+    picks.forEach((s) => (picksByNode[s.nodeId] = [...(picksByNode[s.nodeId] ?? []), s.edgeId]));
+  } else {
+    Object.entries(picks).forEach(([n, e]) => (picksByNode[n] = [e]));
+  }
+
+  const starters = findEntryNodes(nodes, edges);
 
   const activeNodes = new Set<string>();
   const activeEdges = new Set<string>();
   const pendingVars = new Set<string>();
-  const seen = new Set<string>();
+  const visitCounts: Record<string, number> = {};
+  const pendingVisits: Record<string, number> = {};
+  const seenVisits = new Set<string>();
   const stack = [...starters];
-  while (stack.length) {
+  /* 步数预算：回路上非决策节点会重复经过（打回后重走），允许重复展开；
+     终止靠 ①变量节点的决策序列有限（用完即 pending）②预算兜底无变量纯环。 */
+  const budget = nodes.length * 4 + stack.length * 4 + 128;
+  let walked = 0;
+  while (stack.length && walked < budget) {
+    walked += 1;
     const id = stack.pop()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
+    const k = visitCounts[id] ?? 0;
+    visitCounts[id] = k + 1;
+    const key = `${id}#${k}`;
+    if (seenVisits.has(key)) continue;
+    seenVisits.add(key);
     activeNodes.add(id);
     const outs = out[id] || [];
     const v = varByNode[id];
     if (v) {
-      const pick = assignments[v.nodeId];
+      const pick = (picksByNode[id] ?? [])[k];
       if (!pick) {
         pendingVars.add(id);
-        continue; // 走到决策点但未赋值 → 停住，等用户导航
+        pendingVisits[id] = k;
+        continue; // 第 k 次走到该判断点但还没做第 k 次决策 → 停住，等用户导航
       }
       outs.forEach((e) => {
         if (e.id === pick) {
@@ -79,20 +207,168 @@ export function computeScenario(
     }
   }
   const naVars = variables.filter((v) => !activeNodes.has(v.nodeId));
-  return { activeNodes, activeEdges, pendingVars, naVars };
+  /* 回边（拓扑性质，与取值无关）：路径上被走到的回边就是「转了一圈」的那一段 */
+  const backIds = findBackEdges(nodes, edges);
+  const loopEdges = new Set<string>();
+  edges.forEach((e) => {
+    if (backIds.has(e.id) && activeEdges.has(e.id)) loopEdges.add(e.id);
+  });
+  return {
+    activeNodes,
+    activeEdges,
+    pendingVars,
+    naVars,
+    visitCounts,
+    pendingVisits,
+    loopEdges,
+  };
 }
 
 /**
- * 按图遍历序返回节点 id 序列（BFS 从无入边起点出发；无起点取 nodes[0]）。
+ * 通用「一键示例路线」推演：不依赖任何硬编码 id，任意图（含从飞书粘贴进来的图）都能用。
+ *
+ * 规则：从入口节点出发 DFS；遇到**启用中的变量**节点时，取「下游最深」的那条出口
+ *       （能往后带出最多节点，演示价值最大，等价于示例模板里那条深路径）；
+ *       非变量节点照常全展开。遇到终点或步数预算即停。
+ * 回路：同一判断点最多决策 MAX_ROUNDS 轮（演示一圈返工即可），之后停住交给用户手选，
+ *       因此不会绕成死循环。
+ *
+ * 与 computeScenario 的契约：本函数完全复刻 computeScenario 的遍历顺序
+ * （同起点、同 DFS 出栈序），产出的 steps 顺序 == 运行时消费顺序。
+ */
+export function suggestScenarioSteps(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  variables: FlowVariable[]
+): ScenarioStep[] {
+  if (!nodes.length || !variables.length) return [];
+  const out = outgoingByNode(edges);
+  const varByNode: Record<string, FlowVariable> = {};
+  variables.forEach((v) => {
+    varByNode[v.nodeId] = v;
+  });
+  const targetOf = new Map<string, string>();
+  edges.forEach((e) => targetOf.set(e.id, e.target));
+
+  /** 下游深度（到最远出口的层数；回到 visiting 中的节点记 0，避免环上自加无限递归） */
+  const depth: Record<string, number> = {};
+  const visiting = new Set<string>();
+  const depthOf = (id: string): number => {
+    if (depth[id] !== undefined) return depth[id];
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    let best = 0;
+    (out[id] ?? []).forEach((e) => {
+      best = Math.max(best, 1 + depthOf(e.target));
+    });
+    visiting.delete(id);
+    depth[id] = best;
+    return best;
+  };
+  nodes.forEach((n) => depthOf(n.id));
+
+  const steps: ScenarioStep[] = [];
+  const visits: Record<string, number> = {};
+  const stack: string[] = [...findEntryNodes(nodes, edges)];
+  const MAX_ROUNDS = 2; // 同一判断点最多决策 2 轮（够演示「打回 → 重做」一圈）
+  const budget = nodes.length * 4 + variables.length * 4 + 128;
+  let walked = 0;
+
+  while (stack.length && walked < budget) {
+    walked += 1;
+    const id = stack.pop()!;
+    const k = visits[id] ?? 0;
+    visits[id] = k + 1;
+    const outs = out[id] ?? [];
+    if (!outs.length) continue;
+    const v = varByNode[id];
+    if (!v) {
+      outs.forEach((e) => stack.push(e.target));
+      continue;
+    }
+    if (k >= MAX_ROUNDS) continue; // 第 3 次到达：不再代选，留给用户手动决策
+    const opts = v.options.filter((o) => targetOf.has(o.edgeId));
+    if (!opts.length) continue;
+    /* 取下游最深的分支；同深度取声明序第一条（稳定可复现） */
+    const best = opts.reduce((a, b) =>
+      (depth[targetOf.get(b.edgeId)!] ?? 0) > (depth[targetOf.get(a.edgeId)!] ?? 0) ? b : a
+    );
+    steps.push({ nodeId: id, edgeId: best.edgeId });
+    stack.push(targetOf.get(best.edgeId)!);
+  }
+  return steps;
+}
+
+/**
+ * 找出图里的回边（指向 DFS 栈内节点的边）—— 即流程里的「返工/循环」连线。
+ * 纯拓扑性质，与变量取值无关，回路安全（不会因环而递归爆栈）。
+ * @returns 回边的 edge.id 集合
+ */
+export function findBackEdges(nodes: FlowNode[], edges: FlowEdge[]): Set<string> {
+  const ids = nodes.map((n) => n.id);
+  const idSet = new Set(ids);
+  const out = new Map<string, string[]>();
+  ids.forEach((id) => out.set(id, []));
+  const valid = edges.filter((e) => idSet.has(e.source) && idSet.has(e.target));
+  valid.forEach((e) => out.get(e.source)!.push(e.target));
+
+  const backPairs = new Set<string>();
+  const state = new Map<string, 0 | 1 | 2>(); // 0 未访问 / 1 在栈 / 2 完成
+  const stack: string[] = [];
+  const roots = findEntryNodes(nodes, edges);
+  const starts = roots.length ? roots : ids.slice(0, 1);
+
+  starts.concat(ids).forEach((start) => {
+    if (state.get(start)) return;
+    const work: { id: string; i: number }[] = [{ id: start, i: 0 }];
+    state.set(start, 1);
+    stack.push(start);
+    while (work.length) {
+      const top = work[work.length - 1];
+      const list = out.get(top.id) ?? [];
+      if (top.i >= list.length) {
+        work.pop();
+        stack.pop();
+        state.set(top.id, 2);
+        continue;
+      }
+      const next = list[top.i];
+      top.i += 1;
+      const st = state.get(next) ?? 0;
+      if (st === 1) backPairs.add(`${top.id}->${next}`);
+      else if (st === 0) {
+        state.set(next, 1);
+        stack.push(next);
+        work.push({ id: next, i: 0 });
+      }
+    }
+  });
+
+  const back = new Set<string>();
+  valid.forEach((e) => {
+    if (backPairs.has(`${e.source}->${e.target}`)) back.add(e.id);
+  });
+  return back;
+}
+
+/** 决策序列 → 旧式取值表（每节点取最后一次决策）。供导出/兼容旧视图。 */
+export function assignmentsOf(steps: ScenarioStep[]): Assignments {
+  const a: Assignments = {};
+  steps.forEach((s) => (a[s.nodeId] = s.edgeId));
+  return a;
+}
+
+/** 旧式取值表 → 决策序列（读取旧持久化数据时一次性迁移）。 */
+export function stepsOfAssignments(a: Assignments): ScenarioStep[] {
+  return Object.entries(a).map(([nodeId, edgeId]) => ({ nodeId, edgeId }));
+}
+
+/**
+ * 按图遍历序返回节点 id 序列（BFS 从入口节点出发）。
  * 用于变量按首次出现序排列（US-08 AC2）。
  */
 export function traversalOrder(nodes: FlowNode[], edges: FlowEdge[]): string[] {
-  const hasIn: Record<string, boolean> = {};
-  edges.forEach((e) => {
-    hasIn[e.target] = true;
-  });
-  const starters = nodes.filter((n) => !hasIn[n.id]).map((n) => n.id);
-  const queue: string[] = starters.length ? starters : nodes.length ? [nodes[0].id] : [];
+  const queue: string[] = findEntryNodes(nodes, edges);
   const seen = new Set<string>();
   const order: string[] = [];
   while (queue.length) {

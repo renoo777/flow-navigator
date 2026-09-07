@@ -12,11 +12,14 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import {
+  assignmentsOf,
+  stepsOfAssignments,
   buildGraph,
   deriveVariableCandidates,
   estimateNodeSize,
   layoutGraph,
-  PRESET_ASSIGNMENTS,
+  resolveVariables,
+  suggestScenarioSteps,
   SAMPLE_EDGE_DEFS,
   SAMPLE_NODE_DEFS,
   edgeIdOf,
@@ -26,9 +29,11 @@ import {
   type FlowMode,
   type FlowView,
   type NodeKind,
+  type ScenarioStep,
 } from '@flow/core';
 import { EDGE_TYPE_DEFAULT, type SopFlowNode } from '@flow/canvas';
 import { DOCS_STORE, KV_STORE, dbDelete, dbGet, dbGetAll, dbPut } from './idb';
+import { isDesktop, vaultLoad, vaultPath, vaultSave } from './vault';
 
 let uid = 1;
 const nextId = (prefix: string) => `${prefix}${Date.now().toString(36)}${uid++}`;
@@ -75,6 +80,8 @@ export interface FlowContent {
   nodes: SopFlowNode[];
   edges: Edge[];
   assignments: Assignments;
+  /** 情景导航有序决策（可选，旧数据缺省 → 从 assignments 一次性迁移） */
+  steps?: ScenarioStep[];
   view: FlowView;
   /** edit / scenario（view 是打开态，不入库） */
   mode: 'edit' | 'scenario';
@@ -103,6 +110,7 @@ export function blankContent(): FlowContent {
     nodes: [],
     edges: [],
     assignments: {},
+    steps: [],
     view: 'flow',
     mode: 'edit',
     enabledVarNodeIds: null,
@@ -238,6 +246,21 @@ export function sanitizeContent(raw: unknown): FlowContent | null {
       if (nodeIds.has(k) && typeof v === 'string' && edgeIds.has(v)) assignments[k] = v;
     });
   }
+  /* 决策序列：优先读 steps；旧数据/不合法时从 assignments 派生（每节点一条） */
+  let steps: ScenarioStep[] = [];
+  if (Array.isArray(s.steps)) {
+    steps = (s.steps as unknown[]).filter(
+      (x): x is ScenarioStep =>
+        !!x &&
+        typeof x === 'object' &&
+        typeof (x as ScenarioStep).nodeId === 'string' &&
+        typeof (x as ScenarioStep).edgeId === 'string' &&
+        nodeIds.has((x as ScenarioStep).nodeId) &&
+        edgeIds.has((x as ScenarioStep).edgeId)
+    );
+  } else {
+    steps = stepsOfAssignments(assignments);
+  }
   let enabled: string[] | null = null;
   if (Array.isArray(s.enabledVarNodeIds)) {
     enabled = (s.enabledVarNodeIds as unknown[]).filter(
@@ -252,6 +275,7 @@ export function sanitizeContent(raw: unknown): FlowContent | null {
     nodes,
     edges,
     assignments,
+    steps,
     view: s.view === 'talk' ? 'talk' : 'flow',
     mode: s.mode === 'scenario' ? 'scenario' : 'edit',
     enabledVarNodeIds: enabled,
@@ -297,6 +321,118 @@ async function migrateLegacy(): Promise<void> {
 }
 
 /* ============================================================
+ * 桌面版「图库文件镜像」——更新/重装/清 WebView 数据都不丢图
+ * ============================================================ */
+interface VaultPayload {
+  app?: string;
+  kind?: string;
+  version?: number;
+  savedAt?: number;
+  activeDocId?: string | null;
+  docs?: unknown[];
+}
+
+/** 镜像里的单个图过一遍 sanitize：结构坏的丢弃，绝不把脏数据写回库 */
+function normalizeDoc(raw: unknown): FlowDoc | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>;
+  if (typeof d.id !== 'string' || !d.id) return null;
+  const flow = sanitizeContent(d.flow);
+  if (!flow) return null;
+  return {
+    id: d.id,
+    name: typeof d.name === 'string' && d.name.trim() ? d.name : '未命名流程图',
+    group: typeof d.group === 'string' ? d.group : '',
+    createdAt: Number(d.createdAt) || Date.now(),
+    updatedAt: Number(d.updatedAt) || Date.now(),
+    flow,
+  };
+}
+
+/** 立刻把当前整份图库写到镜像文件（同步前端内存里的最新内容，避免漏掉还没落 IDB 的改动） */
+async function mirrorNow(): Promise<void> {
+  if (!isDesktop) return;
+  const s = useAppStore.getState();
+  const docs = await dbGetAll<FlowDoc>(DOCS_STORE);
+  /* 当前打开的图以内存态为准（未被保存的部分也要进镜像）；只读演示态不改内容 */
+  const snap = s.docId && !s.readonly ? snapshotOf(s) : null;
+  const merged = docs.map((d) =>
+    snap && d.id === s.docId ? { ...d, updatedAt: Date.now(), flow: snap } : d
+  );
+  const payload = {
+    app: 'flow-navigator',
+    kind: 'library',
+    version: 1,
+    savedAt: Date.now(),
+    activeDocId: s.docId,
+    docs: merged,
+  };
+  await vaultSave(JSON.stringify(payload));
+}
+
+let mirrorTimer: ReturnType<typeof setTimeout> | null = null;
+/** 合并多次改动的镜像写盘（库操作都会打到这里） */
+function scheduleMirror(): void {
+  if (!isDesktop) return;
+  if (mirrorTimer) clearTimeout(mirrorTimer);
+  mirrorTimer = setTimeout(() => {
+    mirrorTimer = null;
+    void mirrorNow();
+  }, 1200);
+}
+
+/**
+ * 启动时双向补齐：
+ * - 库里有、文件没有 → 写进文件（首次升级就是这条）
+ * - 文件有、库里没有 → 补回库（更新/重装/清了 WebView 数据后靠这条救回来）
+ * - 两边都有 → 取 updatedAt 新的那份
+ */
+async function restoreLibraryFromVault(): Promise<{ restored: number; path: string | null }> {
+  const empty = { restored: 0, path: null as string | null };
+  if (!isDesktop) return empty;
+  const path = await vaultPath();
+  const raw = await vaultLoad();
+  if (!raw) {
+    scheduleMirror(); // 还没有镜像 → 现在补一份
+    return { restored: 0, path };
+  }
+  let parsed: VaultPayload;
+  try {
+    parsed = JSON.parse(raw) as VaultPayload;
+  } catch {
+    return { restored: 0, path };
+  }
+  const remoteDocs = (Array.isArray(parsed.docs) ? parsed.docs : [])
+    .map(normalizeDoc)
+    .filter((d): d is FlowDoc => d !== null);
+  const localDocs = await dbGetAll<FlowDoc>(DOCS_STORE);
+  if (!remoteDocs.length) {
+    if (localDocs.length) await mirrorNow();
+    return { restored: 0, path };
+  }
+  const localMap = new Map(localDocs.map((d) => [d.id, d]));
+  let restored = 0;
+  for (const remote of remoteDocs) {
+    const local = localMap.get(remote.id);
+    if (!local) {
+      await dbPut(DOCS_STORE, remote);
+      restored += 1;
+    } else if (remote.updatedAt > local.updatedAt) {
+      await dbPut(DOCS_STORE, remote);
+    }
+  }
+  /* 上次打开的图：k/v 丢了就从镜像补（否则用户会以为「图都在，只是没打开」） */
+  if (parsed.activeDocId) {
+    const cur = await dbGet<{ key: string; value: string }>(KV_STORE, 'activeDocId');
+    if (!cur?.value && (await dbGet<FlowDoc>(DOCS_STORE, parsed.activeDocId))) {
+      await dbPut(KV_STORE, { key: 'activeDocId', value: parsed.activeDocId });
+    }
+  }
+  await mirrorNow(); // 写回并集，两侧立刻一致
+  return { restored, path };
+}
+
+/* ============================================================
  * Store
  * ============================================================ */
 export interface AppState {
@@ -312,13 +448,21 @@ export interface AppState {
   mode: FlowMode;
   view: FlowView;
   assignments: Assignments;
+  /** 情景导航有序决策序列（真源）：支持回路上同一判断点多次不同选择；assignments 为派生视图 */
+  steps: ScenarioStep[];
+  /** 被「上一步」弹出、可被「下一步」恢复的决策 */
+  redoSteps: ScenarioStep[];
   /** 变量启用集合（null=未初始化，全部候选） */
   enabledVarNodeIds: string[] | null;
   defaultEdgeType: string;
   /** 新建菜单锚点（client 坐标），null=关闭 */
   picker: { x: number; y: number } | null;
-  /** 应用就绪（IDB 打开 + 迁移 + 自动恢复上次图 完成） */
+  /** 应用就绪（IDB 打开 + 旧数据迁移 + 镜像比对 + 自动恢复上次图 完成） */
   ready: boolean;
+  /** 桌面版图库镜像文件路径（Web 版为 null） */
+  vaultPath: string | null;
+  /** 启动恢复提示（从镜像文件补回了几张图），null=无需打扰用户 */
+  vaultNotice: string | null;
 
   /* --- E1 撤销/重做（快照 JSON 栈，只覆盖图形内容）--- */
   undoStack: string[];
@@ -326,6 +470,8 @@ export interface AppState {
   /* --- 编辑器运行时偏好（不入库）--- */
   snapEnabled: boolean;
   gridVisible: boolean;
+  /** 情景导航视角：false=仅路径（路线外压暗，默认）；true=全图（保留路线强调，不压暗） */
+  focusAll: boolean;
   /** 主题（B3/P1-F18） */
   theme: 'light' | 'dark';
   setTheme: (t: 'light' | 'dark') => void;
@@ -339,9 +485,13 @@ export interface AppState {
   // --- 动作 ---
   setMode: (m: FlowMode) => void;
   setView: (v: FlowView) => void;
-  assign: (nodeId: string, edgeId: string) => void;
+  /** visit：环上第几次经过（pending 时由 scenario.pendingVisits 提供）；缺省=改最后一次决策并截断其后 */
+  assign: (nodeId: string, edgeId: string, visit?: number) => void;
   clearAssignments: () => void;
   presetAssignments: () => void;
+  /** 情景步进：回退/恢复一条决策（回路导航用） */
+  stepBack: () => void;
+  stepForward: () => void;
   relayout: () => void;
   /** 局部整理：只重排选中节点（在完整图布局中取其位置 + bbox 中心偏移补偿），入历史 */
   localRelayout: () => void;
@@ -358,6 +508,7 @@ export interface AppState {
   redo: () => void;
   setSnap: (b: boolean) => void;
   setGridVisible: (b: boolean) => void;
+  setFocusAll: (b: boolean) => void;
   /** 对齐选中节点（≥2，以外接框为基准） */
   alignSelected: (dir: 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom') => void;
   /** 等距分布选中节点（≥3） */
@@ -416,14 +567,19 @@ const emptyEditor = {
   mode: 'edit' as FlowMode,
   view: 'flow' as FlowView,
   assignments: {} as Assignments,
+  steps: [] as ScenarioStep[],
+  redoSteps: [] as ScenarioStep[],
   enabledVarNodeIds: null as string[] | null,
   defaultEdgeType: EDGE_TYPE_DEFAULT,
   picker: null as { x: number; y: number } | null,
   ready: false,
+  vaultPath: null as string | null,
+  vaultNotice: null as string | null,
   undoStack: [] as string[],
   redoStack: [] as string[],
   snapEnabled: true,
   gridVisible: true,
+  focusAll: false,
   theme: 'light' as 'light' | 'dark',
 };
 
@@ -445,13 +601,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       let nodes = applyNodeChanges(changes, st.nodes);
       let edges = st.edges;
       let assignments = st.assignments;
+      let steps = st.steps;
       if (removed.length) {
         edges = edges.filter((e) => !removed.includes(e.source) && !removed.includes(e.target));
         assignments = Object.fromEntries(
           Object.entries(assignments).filter(([k]) => !removed.includes(k))
         );
+        steps = steps.filter((x) => !removed.includes(x.nodeId));
       }
-      return { nodes, edges, assignments };
+      return { nodes, edges, assignments, steps };
     });
   },
 
@@ -461,12 +619,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((st) => {
       let edges = applyEdgeChanges(changes, st.edges);
       let assignments = st.assignments;
+      let steps = st.steps;
       if (removed.length) {
         assignments = Object.fromEntries(
           Object.entries(assignments).filter(([, eid]) => !removed.includes(eid))
         );
+        steps = steps.filter((x) => !removed.includes(x.edgeId));
       }
-      return { edges, assignments };
+      return { edges, assignments, steps };
     });
   },
 
@@ -538,26 +698,93 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { view: v, nodes };
     }),
 
-  assign: (nodeId, edgeId) =>
+  /**
+   * 情景决策（M3）：真源是 steps 有序序列。
+   * - 带 visit（pending 时第 visit 次经过，环上同一判断点第 N 次选择）→ 追加
+   * - 不带 visit → 修改该节点最后一次决策，并**截断其后所有决策**
+   *   （后续决策建立在旧路径上，改了前面就必须重走；语义同「浏览器改地址栏截断前进栈」）
+   * - 再点同一条已选出口 = 取消该决策
+   */
+  assign: (nodeId, edgeId, visit) =>
     set((st) => {
-      const next = { ...st.assignments };
-      if (next[nodeId] === edgeId) delete next[nodeId];
-      else next[nodeId] = edgeId;
-      return { assignments: next };
+      const occ = st.steps.filter((s) => s.nodeId === nodeId);
+      let next: ScenarioStep[];
+      if (visit !== undefined && visit >= occ.length) {
+        next = [...st.steps, { nodeId, edgeId }];
+      } else {
+        let idx = -1;
+        if (visit !== undefined) {
+          let cnt = -1;
+          for (let i = 0; i < st.steps.length; i += 1) {
+            if (st.steps[i].nodeId === nodeId) {
+              cnt += 1;
+              if (cnt === visit) {
+                idx = i;
+                break;
+              }
+            }
+          }
+        } else {
+          for (let i = st.steps.length - 1; i >= 0; i -= 1) {
+            if (st.steps[i].nodeId === nodeId) {
+              idx = i;
+              break;
+            }
+          }
+        }
+        if (idx < 0) {
+          next = [...st.steps, { nodeId, edgeId }];
+        } else {
+          const head = st.steps.slice(0, idx);
+          next = st.steps[idx].edgeId === edgeId ? head : [...head, { nodeId, edgeId }];
+        }
+      }
+      return { steps: next, redoSteps: [], assignments: assignmentsOf(next) };
     }),
 
-  clearAssignments: () => set({ assignments: {} }),
+  clearAssignments: () => set({ steps: [], redoSteps: [], assignments: {} }),
 
+  /**
+   * 一键示例：任意图可用（飞书粘贴、手工搭建都行）。
+   * 旧实现拿示例模板的硬编码 id（d1/d2/d3）硬套——只要用户换一张图就一条都对不上，
+   * 点了完全没反应（「失效」的根因）。现在改为按图推演：入口出发，每个判断点走「下游最深」
+   * 的那条分支，回路最多绕两轮后停住交给用户。
+   */
   presetAssignments: () => {
-    const { nodes, edges } = get();
-    const nodeIds = new Set(nodes.map((n) => n.id));
-    const edgeIds = new Set(edges.map((e) => e.id));
-    const valid: Assignments = {};
-    Object.entries(PRESET_ASSIGNMENTS).forEach(([k, v]) => {
-      if (nodeIds.has(k) && edgeIds.has(v)) valid[k] = v;
-    });
-    set({ assignments: valid });
+    const st = get();
+    const coreNodes = st.nodes.map((n) => ({
+      id: n.id,
+      type: 'sop' as const,
+      position: { x: 0, y: 0 },
+      data: n.data,
+    }));
+    const coreEdges = st.edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: 'step' as const,
+      label: typeof e.label === 'string' ? e.label : '',
+    }));
+    const vars = resolveVariables(coreNodes, coreEdges, st.enabledVarNodeIds);
+    const steps = suggestScenarioSteps(coreNodes, coreEdges, vars);
+    set({ steps, redoSteps: [], assignments: assignmentsOf(steps) });
   },
+
+  stepBack: () =>
+    set((st) => {
+      if (!st.steps.length) return st;
+      const steps = st.steps.slice(0, -1);
+      const redoSteps = [...st.redoSteps, st.steps[st.steps.length - 1]];
+      return { steps, redoSteps, assignments: assignmentsOf(steps) };
+    }),
+
+  stepForward: () =>
+    set((st) => {
+      if (!st.redoSteps.length) return st;
+      const last = st.redoSteps[st.redoSteps.length - 1];
+      const steps = [...st.steps, last];
+      return { steps, redoSteps: st.redoSteps.slice(0, -1), assignments: assignmentsOf(steps) };
+    }),
 
   relayout: () =>
     set((st) => {
@@ -667,6 +894,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           ([nodeId, eid]) => !removedNodeIds.includes(nodeId) && !removedEdgeIds.includes(eid)
         )
       ),
+      steps: st.steps.filter(
+        (x) => !removedNodeIds.includes(x.nodeId) && !removedEdgeIds.includes(x.edgeId)
+      ),
     })),
 
   /* ---------- E1 历史栈 / 运行时偏好 ---------- */
@@ -675,6 +905,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   redo: () => doRedo(),
   setSnap: (b) => set({ snapEnabled: b }),
   setGridVisible: (b) => set({ gridVisible: b }),
+  setFocusAll: (b) => set({ focusAll: b }),
   setTheme: (t) => set({ theme: t }),
   toggleTheme: () => set((st) => ({ theme: st.theme === 'dark' ? 'light' : 'dark' })),
 
@@ -844,7 +1075,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   /* ---------- 启动 ---------- */
   boot: async () => {
+    /* ① 旧单图 localStorage → 库迁移（一次性） */
     await migrateLegacy();
+    /* ② 桌面版文件镜像 ↔ IndexedDB 双向补齐：更新/重装/清 WebView 数据后自动把图找回来 */
+    const restored = await restoreLibraryFromVault();
+    if (restored.restored > 0) {
+      set({
+        vaultNotice: `已从本地备份恢复 ${restored.restored} 张流程图（检测到图库缺失）`,
+      });
+    }
+    if (restored.path) set({ vaultPath: restored.path });
+    /* ③ 恢复上次打开的图 */
     const active = await dbGet<{ key: string; value: string }>(KV_STORE, 'activeDocId');
     if (active?.value) {
       const doc = await dbGet<FlowDoc>(DOCS_STORE, active.value);
@@ -857,6 +1098,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           nodes: doc.flow.nodes,
           edges: doc.flow.edges,
           assignments: doc.flow.assignments,
+          steps: doc.flow.steps ?? stepsOfAssignments(doc.flow.assignments),
+          redoSteps: [],
           view: doc.flow.view,
           mode: doc.flow.mode,
           enabledVarNodeIds: doc.flow.enabledVarNodeIds,
@@ -883,6 +1126,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       nodes: doc.flow.nodes,
       edges: doc.flow.edges,
       assignments: doc.flow.assignments,
+      steps: doc.flow.steps ?? stepsOfAssignments(doc.flow.assignments),
+      redoSteps: [],
       view: doc.flow.view,
       /**
        * Bug1 修复：打开文档一律以「编辑」进入（非 readonly）。
@@ -903,7 +1148,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   closeToLibrary: async () => {
     flushNow(get()); // 先落当前编辑内容
     await dbDelete(KV_STORE, 'activeDocId');
-    set({ ...emptyEditor, ready: true });
+    const keepVault = get().vaultPath;
+    set({ ...emptyEditor, ready: true, vaultPath: keepVault });
+    await mirrorNow();
   },
 
   createDoc: async (name, group, content) => {
@@ -916,6 +1163,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       flow: content,
     };
     await dbPut(DOCS_STORE, doc);
+    scheduleMirror();
     await useAppStore.getState().openDoc(doc.id);
   },
 
@@ -928,6 +1176,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       nodes: laid as unknown as SopFlowNode[],
       edges: edges as unknown as Edge[],
       assignments: {},
+      steps: [],
       view: 'flow',
       mode: 'edit',
       enabledVarNodeIds: allVars,
@@ -948,6 +1197,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       flow: JSON.parse(JSON.stringify(doc.flow)) as FlowContent,
     };
     await dbPut(DOCS_STORE, copy);
+    scheduleMirror();
   },
 
   renameDoc: async (id, name) => {
@@ -955,6 +1205,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!doc) return;
     await dbPut(DOCS_STORE, { ...doc, name: name || doc.name });
     if (get().docId === id) set({ docName: name || doc.name });
+    scheduleMirror();
   },
 
   setDocGroup: async (id, group) => {
@@ -962,14 +1213,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!doc) return;
     await dbPut(DOCS_STORE, { ...doc, group: group || '' });
     if (get().docId === id) set({ docGroup: group || '' });
+    scheduleMirror();
   },
 
   deleteDoc: async (id) => {
     await dbDelete(DOCS_STORE, id);
     if (get().docId === id) {
       await dbDelete(KV_STORE, 'activeDocId');
-      set({ ...emptyEditor, ready: true });
+      const keepVault = get().vaultPath;
+      set({ ...emptyEditor, ready: true, vaultPath: keepVault });
     }
+    /* 删除必须立刻落镜像，否则回滚快照当天就没了 */
+    await mirrorNow();
   },
 
   /* ---------- 编辑器级 ---------- */
@@ -981,6 +1236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     dbGet<FlowDoc>(DOCS_STORE, docId)
       .then((doc) => (doc ? dbPut(DOCS_STORE, { ...doc, name: clean }) : undefined))
       .catch(() => undefined);
+    scheduleMirror();
     set({ docName: clean });
   },
 
@@ -1005,6 +1261,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       nodes: st.nodes,
       edges: st.edges,
       assignments: st.assignments,
+      steps: st.steps,
       view: st.view,
       mode: st.mode === 'scenario' ? 'scenario' : 'edit',
       enabledVarNodeIds: st.enabledVarNodeIds,
@@ -1107,6 +1364,7 @@ function snapshotOf(s: AppState): FlowContent | null {
     nodes: s.nodes,
     edges: s.edges,
     assignments: s.assignments,
+    steps: s.steps,
     view: s.view,
     mode: s.mode === 'scenario' ? 'scenario' : 'edit',
     enabledVarNodeIds: s.enabledVarNodeIds,
@@ -1145,7 +1403,11 @@ function scheduleSave(s: AppState) {
 }
 
 if (isBrowser) {
-  window.addEventListener('beforeunload', () => flushNow(useAppStore.getState()));
+  /* 关闭/切后台：内容落库 + 立刻刷新文件镜像（退出不等 debounce） */
+  window.addEventListener('beforeunload', () => {
+    flushNow(useAppStore.getState());
+    void mirrorNow();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushNow(useAppStore.getState());
   });

@@ -71,6 +71,10 @@ export function LibraryScreen() {
   const renameDoc = useAppStore((s) => s.renameDoc);
   const setDocGroup = useAppStore((s) => s.setDocGroup);
   const deleteDoc = useAppStore((s) => s.deleteDoc);
+  /* 桌面版图库文件镜像：路径 + 启动自动恢复的提示（Web 版恒为 null） */
+  const vaultPath = useAppStore((s) => s.vaultPath);
+  const vaultNotice = useAppStore((s) => s.vaultNotice);
+  const [vaultNoticeOpen, setVaultNoticeOpen] = useState(true);
 
   const load = useCallback(async () => {
     const all = await dbGetAll<FlowDoc>(DOCS_STORE);
@@ -367,6 +371,26 @@ export function LibraryScreen() {
             );
           })}
         </div>
+      )}
+
+      {/* 桌面版：图库文件镜像提示（更新/重装后自动恢复的入口说明） */}
+      {vaultNotice && vaultNoticeOpen && (
+        <div className="lib-vault-notice" data-testid="vault-notice">
+          <span>{vaultNotice}</span>
+          <button onClick={() => setVaultNoticeOpen(false)} aria-label="知道了">
+            ✕
+          </button>
+        </div>
+      )}
+      {vaultPath && (
+        <footer
+          className="lib-vault"
+          data-testid="vault-hint"
+          title={`图库每次改动都会镜像到此文件；每天保留一份快照，最多 7 天：\n${vaultPath}`}
+        >
+          <span className="lv-dot" aria-hidden="true" />
+          图库已同步备份到本机文件（升级 / 重装不会丢）：{vaultPath}
+        </footer>
       )}
 
       {/* 更多操作浮层 */}

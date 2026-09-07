@@ -51,6 +51,8 @@ export type SopNodeData = {
   chain?: 'root' | 'hit' | 'miss';
   /** Build M：情景路线已完全确定（沿途无待赋值变量）→ 最高强调级 */
   routeDone?: boolean;
+  /** 循环可视化：本次路径中该节点被经过的次数（>=2 才注入，用于「第N轮」角标） */
+  loopRound?: number;
   /** 画布搜索（Build K-④）：searchDim=非命中淡出 / searchActive=当前项描边 */
   searchDim?: boolean;
   searchActive?: boolean;
@@ -168,7 +170,10 @@ export function SopNode({ id, data, selected }: NodeProps) {
       data-view={view}
       style={paintStyle}
     >
-      <Handle type="target" position={Position.Top} className="h-target" />
+      {/* 四向连接点：上下左右都可发起 / 接收连线（配合 ConnectionMode.Loose） */}
+      <Handle type="source" id="top" position={Position.Top} className="h-target h-top" />
+      <Handle type="source" id="left" position={Position.Left} className="h-side h-left" />
+      <Handle type="source" id="right" position={Position.Right} className="h-side h-right" />
       <span className="rail" style={{ background: rail }} />
       {view === 'talk' ? (
         talkEditable && !locked ? (
@@ -232,7 +237,12 @@ export function SopNode({ id, data, selected }: NodeProps) {
           <span className="sop-sub">{KIND_TAG[kind] || ''}</span>
         </div>
       )}
-      <Handle type="source" position={Position.Bottom} className="h-source" />
+      <Handle type="source" id="bottom" position={Position.Bottom} className="h-source h-bottom" />
+      {typeof d.loopRound === 'number' && d.loopRound >= 2 && (
+        <span className="loop-badge" title={`本次路线经过这里 ${d.loopRound} 次`}>
+          ↻ {d.loopRound}
+        </span>
+      )}
     </div>
   );
 }

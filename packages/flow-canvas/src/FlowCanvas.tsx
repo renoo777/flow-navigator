@@ -13,6 +13,7 @@ import {
 import {
   Background,
   BackgroundVariant,
+  ConnectionMode,
   Controls,
   MarkerType,
   MiniMap,
@@ -49,6 +50,8 @@ export interface FlowCanvasProps {
   view: FlowView;
   variables: FlowVariable[];
   scenario: ScenarioResult | null;
+  /** 情景导航「全图」视角：true 时保留路线强调，但不压暗路线之外的节点与连线（M1-①） */
+  focusAll?: boolean;
   onNodesChange: (changes: NodeChange<SopFlowNode>[]) => void;
   onEdgesChange: (changes: EdgeChange<Edge>[]) => void;
   onConnect: OnConnect;
@@ -224,6 +227,7 @@ const GUIDE_SECTIONS: { title: string; rows: [string, string][] }[] = [
       ['Ctrl+Z', '撤销'],
       ['Ctrl+Shift+Z', '重做'],
       ['Ctrl+A', '全选'],
+      ['Ctrl+C / V', '复制 / 粘贴（可粘飞书画板）'],
       ['Delete', '删除选中'],
       ['F2', '改名'],
       ['方向键', '微调 1px（Shift 10px）'],
@@ -264,6 +268,7 @@ export function FlowCanvas({
   view,
   variables,
   scenario,
+  focusAll = false,
   onNodesChange,
   onEdgesChange,
   onConnect,
@@ -644,7 +649,8 @@ export function FlowCanvas({
       let status: 'active' | 'dim' | 'pending' = 'active';
       const onRoute = scenario ? scenario.activeNodes.has(n.id) : false;
       if (scenario) {
-        if (!scenario.activeNodes.has(n.id)) status = 'dim';
+        /* focusAll（全图视角）：路线之外的节点恢复常亮，只保留 pending 提示与路线强调 */
+        if (!scenario.activeNodes.has(n.id)) status = focusAll ? 'active' : 'dim';
         if (scenario.pendingVars.has(n.id)) status = 'pending';
       }
       const chainState: 'root' | 'hit' | 'miss' | undefined = !chain
@@ -672,11 +678,14 @@ export function FlowCanvas({
           ...(searching ? { searchDim: !isHit, searchActive: n.id === searchActiveId } : {}),
           /* Build M：路线已完全确定 → 最高强调级（双环 + 外发光 + 一次性流光） */
           ...(routeDone && onRoute ? { routeDone: true } : { routeDone: undefined }),
+          /* 循环可视化：同一节点在本次路径里被经过 >=2 次 → 显示「第N轮」角标 */
+          loopRound:
+            scenario && (scenario.visitCounts?.[n.id] ?? 0) >= 2 ? scenario.visitCounts[n.id] : undefined,
           _mark: onTalkEdit,
         },
       };
     });
-  }, [nodes, scenario, routeDone, view, mode, onTalkEdit, chain, chainRes, searchOpen, searchQ, searchActiveId, searchHitIds]);
+  }, [nodes, scenario, focusAll, routeDone, view, mode, onTalkEdit, chain, chainRes, searchOpen, searchQ, searchActiveId, searchHitIds]);
 
   /* —— 边装饰：颜色 / 标签 chip（含变量出口默认名「出口 n」）—— */
   const edgeLabelOf = useCallback(
@@ -696,14 +705,23 @@ export function FlowCanvas({
       const act = scenario ? scenario.activeEdges : null;
       return edges.map((e) => {
       const active = act ? act.has(e.id) : true;
-      const dim = act && !active;
+      /** focusAll：不压暗非路线连线（仍用 idle 色，路线边保持加粗强调） */
+      const dim = act && !active && !focusAll;
       /**
        * Build M：激活边显著加粗并加深蓝，非激活边压到近乎隐形 ——
        * 复杂图里要靠「粗细差 + 明度差」而非纯色差来区隔。
        * 颜色全部走 CSS 变量（--edge-* / --route-label-*）：
        * 边的 stroke 与箭头 marker 都由这里驱动，硬编码会让暗色主题下深蓝线条糊在深底上。
        */
-      const color = dim ? 'var(--edge-off)' : active && act ? 'var(--edge-route)' : 'var(--edge-idle)';
+      /* 回边（返工）：紫色，与蓝色主干明显区分 —— 一眼看出这是「转回去」的那条线 */
+      const isLoop = !!scenario?.loopEdges?.has(e.id);
+      const color = isLoop
+        ? '#8b5cf6'
+        : dim
+          ? 'var(--edge-off)'
+          : active && act
+            ? 'var(--edge-route)'
+            : 'var(--edge-idle)';
       const label = edgeLabelOf(e);
       const labelStyle =
         active && act
@@ -712,6 +730,8 @@ export function FlowCanvas({
       const labelBgStyle =
         active && act ? { fill: 'var(--route-label-bg)' } : { fill: 'var(--surface-2)' };
       const chainCls = !chain ? '' : chainRes.edges.has(e.id) ? 'chain-hit' : 'chain-miss';
+      /* 循环可视化：路径上的回边（返工）单独标记 */
+      const loopCls = isLoop ? 'loop-back' : '';
       /* route-on = 路线主干；route-done = 整条路线已确定（实线+发光，区别于"还在走"的流动虚线） */
       const routeCls = act
         ? active
@@ -720,10 +740,13 @@ export function FlowCanvas({
             : 'route-on'
           : 'route-off'
         : '';
-      const cls = [chainCls, routeCls].filter(Boolean).join(' ');
+      const cls = [chainCls, routeCls, loopCls].filter(Boolean).join(' ');
       return {
         ...e,
         ...(cls ? { className: cls } : {}),
+        /* 四向连接点：老数据没有 handle 信息，默认仍是「下出上进」 */
+        sourceHandle: e.sourceHandle ?? 'bottom',
+        targetHandle: e.targetHandle ?? 'top',
         label,
         style: {
           stroke: color,
@@ -743,7 +766,7 @@ export function FlowCanvas({
         labelBgBorderRadius: 4,
       };
     });
-  }, [edges, scenario, routeDone, edgeLabelOf, chain, chainRes]);
+  }, [edges, scenario, focusAll, routeDone, edgeLabelOf, chain, chainRes]);
 
   /* —— 双击连线 chip → 浮层改名 —— */
   const onEdgeDoubleClick: EdgeMouseHandler = useCallback((e, edge) => {
@@ -806,6 +829,8 @@ export function FlowCanvas({
         nodes={displayedNodes}
         edges={displayedEdges}
         nodeTypes={nodeTypes}
+        /* 四向连线：任意一侧的连接点都能发起/接收连线（React Flow loose 模式） */
+        connectionMode={ConnectionMode.Loose}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={mode === 'edit' ? undefined : handleNodeClick}

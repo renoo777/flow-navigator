@@ -209,15 +209,42 @@ describe('computeScenario：环保护（seen 去重，不无限循环）', () =>
       ]
     );
     const vars = deriveVariables(ring.nodes, ring.edges);
-    // 起点无入边者：环上所有节点都有入边（r2->r1 / r1->r2）→ 兜底 nodes[0]=r1
-    // 赋值 r1 -> r2（走回环分支）：r1→r2→r1(seen 已含，停)
+    // 环上所有节点都有入边 → SCC 源分量兜底，r1 作为入口
+    // 赋值 r1 -> r2（走回环分支）：r1→r2→回到 r1（第二次经过）
     const sc = computeScenario(ring.nodes, ring.edges, vars, {
       r1: edgeIdOf('r1', 'r2'),
     });
     sameSet(sc.activeNodes, ['r1', 'r2']);
-    expect(sc.pendingVars.size).toBe(0);
+    // M3 visit 语义：第二次经过 r1 时没有第二条决策 → pending 停下等用户再选
+    //（旧实现 seen 去重无声绕圈；现在必须显式决策，杜绝无限打转）
+    expect(sc.pendingVars.has('r1')).toBe(true);
+    expect(sc.pendingVisits['r1']).toBe(1);
     // r1 是决策节点且在 active → 不算 N/A
     expect(sc.naVars).toHaveLength(0);
+  });
+
+  it('回路上第二次决策：两跳各选不同分支可走通（M3 visit 语义）', () => {
+    const ring = buildGraph(
+      [
+        { id: 'r1', label: '重试？', kind: 'decision' },
+        { id: 'r2', label: '做一步', kind: 'step' },
+        { id: 'r3', label: '结束', kind: 'io-end' },
+      ],
+      [
+        { s: 'r1', t: 'r2', label: '重试' },
+        { s: 'r2', t: 'r1', label: '' },
+        { s: 'r1', t: 'r3', label: '成功' },
+      ]
+    );
+    const vars = deriveVariables(ring.nodes, ring.edges);
+    // 第 1 次经过 r1 选「重试」，第 2 次选「成功」→ 应走到 r3
+    const sc = computeScenario(ring.nodes, ring.edges, vars, [
+      { nodeId: 'r1', edgeId: edgeIdOf('r1', 'r2') },
+      { nodeId: 'r1', edgeId: edgeIdOf('r1', 'r3') },
+    ]);
+    sameSet(sc.activeNodes, ['r1', 'r2', 'r3']);
+    expect(sc.pendingVars.size).toBe(0);
+    expect(sc.activeEdges.has(edgeIdOf('r1', 'r3'))).toBe(true);
   });
 });
 
@@ -254,5 +281,47 @@ describe('layoutGraph：无重叠 + 拓扑自上而下', () => {
       const t = pos.get(e.target);
       if (s && t) expect(s.y, `${e.source}->${e.target}`).toBeLessThan(t.y);
     });
+  });
+});
+
+describe('循环可视化：回边识别与经过次数', () => {
+  /** 提交? →(是) 填写 → 审核? →(通过) 归档 / (打回) 回到填写 */
+  const cyc = buildGraph(
+    [
+      { id: 'S', label: '提交?', kind: 'decision' },
+      { id: 'B', label: '填写', kind: 'step' },
+      { id: 'C', label: '审核?', kind: 'decision' },
+      { id: 'D', label: '归档', kind: 'step' },
+    ],
+    [
+      { s: 'S', t: 'B', label: '是' },
+      { s: 'S', t: 'D', label: '否' },
+      { s: 'B', t: 'C', label: '' },
+      { s: 'C', t: 'D', label: '通过' },
+      { s: 'C', t: 'B', label: '打回' },
+    ]
+  );
+  const vars = deriveVariables(cyc.nodes, cyc.edges);
+  const steps = [
+    { nodeId: 'S', edgeId: edgeIdOf('S', 'B') },
+    { nodeId: 'C', edgeId: edgeIdOf('C', 'B') }, // 第一次：打回
+    { nodeId: 'C', edgeId: edgeIdOf('C', 'D') }, // 第二次：通过
+  ];
+  const sc = computeScenario(cyc.nodes, cyc.edges, vars, steps);
+
+  it('回边（打回）进入 loopEdges，正向边不算', () => {
+    expect(sc.loopEdges.has(edgeIdOf('C', 'B'))).toBe(true);
+    expect(sc.loopEdges.has(edgeIdOf('B', 'C'))).toBe(false);
+  });
+
+  it('被重复经过的节点 visitCounts >= 2（驱动「第N轮」角标）', () => {
+    expect(sc.visitCounts['B']).toBe(2);
+    expect(sc.visitCounts['C']).toBe(2);
+    expect(sc.visitCounts['D']).toBe(1);
+  });
+
+  it('打回后再通过，最终到达归档且无待定', () => {
+    expect(sc.activeNodes.has('D')).toBe(true);
+    expect(sc.pendingVars.size).toBe(0);
   });
 });

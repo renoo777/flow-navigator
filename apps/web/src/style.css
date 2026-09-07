@@ -698,6 +698,25 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 .h-target, .h-source { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-4); border: 1.5px solid #fff; transition: background var(--t-fast) var(--ease); }
 .react-flow__node:hover .h-source { background: var(--accent); }
+/* 四向连接点：四边都能连线。左右两点默认略小，hover 时放大到与上下一致便于抓取 */
+.h-side { opacity: 0.55; }
+.react-flow__node:hover .h-side,
+.react-flow__node.selected .h-side { opacity: 1; background: var(--accent); }
+.react-flow__handle.h-left { left: -5px; }
+.react-flow__handle.h-right { right: -5px; }
+.react-flow__handle.h-top { top: -5px; }
+.react-flow__handle.h-bottom { bottom: -5px; }
+/* 循环可视化：同一节点在本次路线里被经过多次 → 右上角「↻ N」角标 */
+.loop-badge {
+  position: absolute; top: -9px; right: -9px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 1px 6px; border-radius: 9px;
+  font-size: 10px; font-weight: 650; line-height: 1.5;
+  color: #7c3aed; background: #f3e8ff; border: 1px solid #d8b4fe;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); pointer-events: none;
+}
+/* 回边（返工/循环连线）：紫色虚线，与正常路线区分 */
+.react-flow__edge.loop-back .react-flow__edge-path { stroke-dasharray: 6 4; }
 
 /* 连线改名浮层 */
 .edge-rename-pop { position: absolute; z-index: 20; animation: rise-in var(--t-fast) var(--ease); }
@@ -761,6 +780,18 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .vh-hint { font-size: 10.5px; color: #b45309; }
 .vh-manage { margin-left: auto; border: 1px solid var(--hairline); background: var(--surface-1); color: var(--accent); font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .vh-manage:hover { border-color: var(--accent); background: var(--accent-soft); }
+/* 情景导航：视角切换（全图/仅路径）与重置，放在变量区头部——底部「清除赋值」太靠下易被忽略 */
+.vh-focus { border: 1px solid var(--hairline); background: var(--surface-1); color: var(--ink-3); font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.vh-focus:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.vh-reset { border: 1px solid var(--hairline); background: var(--surface-1); color: var(--ink-3); font-size: 12px; line-height: 1; padding: 3px 6px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.vh-reset:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.vh-reset:disabled { opacity: 0.4; cursor: default; }
+/* 情景步进条（M3）：上一步/下一步，回路中可穿越决策历史 */
+.step-bar { display: flex; align-items: center; gap: 8px; padding: 6px 16px 0; }
+.sb-btn { border: 1px solid var(--hairline); background: var(--surface-1); color: var(--ink-2); font-size: 11px; padding: 2px 9px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.sb-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.sb-btn:disabled { opacity: 0.4; cursor: default; }
+.sb-count { font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
 .var-x { border: 0; background: transparent; color: var(--ink-4); font-size: 11px; padding: 0 3px; cursor: pointer; border-radius: 4px; flex-shrink: 0; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .var-row:hover .var-x { color: var(--danger); }
 .var-x:hover { background: var(--danger-soft); color: #912018 !important; }
@@ -864,6 +895,39 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .btn-ghost { border: 1px solid var(--hairline); background: var(--surface-1); color: var(--ink-1); padding: 6px 14px; border-radius: 8px; font-size: 12.5px; cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
 .btn-ghost.accent { color: var(--accent); border-color: #bcd0f7; }
+
+/* ============ 粘贴导入确认（飞书画板） ============ */
+.pi-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.pi-stat { display: flex; flex-direction: column; gap: 1px; padding: 9px 10px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface-1); }
+.pi-stat b { font-size: 17px; font-weight: 650; color: var(--ink-1); line-height: 1.1; }
+.pi-stat span { font-size: 10.5px; color: var(--ink-3); }
+.pi-field { margin-top: 14px; }
+.pi-field-label { font-size: 11.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }
+.pi-opt { display: flex; gap: 9px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface-1); cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.pi-opt + .pi-opt { margin-top: 6px; }
+.pi-opt:hover { border-color: #c7d6f5; }
+.pi-opt input { margin-top: 2px; accent-color: var(--accent); cursor: pointer; }
+.pi-opt span { font-size: 12.5px; color: var(--ink-1); display: flex; flex-direction: column; gap: 2px; }
+.pi-opt em { font-style: normal; font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+.pi-note { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: #fff8e6; border: 1px solid #f0dfae; color: #6b4a03; font-size: 11.5px; line-height: 1.6; }
+/* 连线样式三选：图形 + 文字，选中态描边强调 */
+.pi-edge-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.pi-edge { display: flex; flex-direction: column; gap: 5px; padding: 9px 8px 8px; border: 1px solid var(--hairline); border-radius: 9px; background: var(--surface-1); cursor: pointer; color: var(--ink-3); transition: border-color var(--t-fast) var(--ease), background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.pi-edge:hover { border-color: #c7d6f5; }
+.pi-edge input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pi-edge.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-1)); color: var(--accent); }
+.pie-svg { width: 100%; height: 34px; }
+.pie-text { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; font-weight: 600; color: var(--ink-1); }
+.pie-text em { font-style: normal; font-weight: 400; font-size: 10.5px; color: var(--ink-3); line-height: 1.45; }
+/* 桌面版图库文件镜像：底部一行说明，低调不抢戏 */
+.lib-vault { display: flex; align-items: center; gap: 7px; padding: 7px 26px 8px; border-top: 1px solid var(--hairline); font-size: 10.5px; color: var(--ink-3); line-height: 1.5; word-break: break-all; }
+.lib-vault .lv-dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; flex: none; }
+.lib-vault-notice { display: flex; align-items: center; gap: 10px; margin: 0 26px 8px; padding: 7px 10px; border: 1px solid #bfe3c9; border-radius: 8px; background: #f1faf4; color: #146c33; font-size: 11.5px; }
+.lib-vault-notice span { flex: 1; }
+.lib-vault-notice button { border: none; background: none; color: inherit; cursor: pointer; font-size: 12px; opacity: .7; }
+.lib-vault-notice button:hover { opacity: 1; }
+.pi-count { font-size: 11px; color: var(--ink-3); }
+.pi-cta { display: flex; gap: 8px; margin-left: auto; }
 
 /* ============ Boot / 加载 ============ */
 .boot-splash, .lib-loading { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--ink-3); font-size: 13px; background: var(--bg-app); }
@@ -1225,7 +1289,10 @@ body::before {
   stroke-dasharray: 8 8;
   animation: dash-flow 700ms linear infinite;
 }
-.react-flow__edge.chain-hit .react-flow__edge-textwrapper > * { fill: var(--accent) !important; }
+/* 只染文字，不染背景板：早年 `> *` 会把 <rect>(标签底色) 与 <text>(文字) 一起刷成 --accent，
+   同色叠同色导致分支文字彻底看不见（情景导航点节点触发链路追踪时必现）。 */
+.react-flow__edge.chain-hit .react-flow__edge-textwrapper > text { fill: var(--accent) !important; }
+.react-flow__edge.chain-hit .react-flow__edge-textwrapper > rect { fill: var(--route-label-bg); }
 
 /* 链路状态胶囊（画布底部居中）：显示当前追踪范围，可切换/关闭 */
 .chain-bar {

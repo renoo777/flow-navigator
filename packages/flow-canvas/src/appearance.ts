@@ -24,10 +24,10 @@ export const KIND_OPTIONS: { kind: NodeKind; label: string; desc: string }[] = [
 ];
 
 /* ===== 连线样式（RF 内置 type 名 → 中文） ===== */
+/** 连线样式三选（产品口径统一为「肘线 / 曲线 / 直线」；smoothstep 仍可被旧数据携带） */
 export const EDGE_TYPE_DEFAULT = 'step';
 export const EDGE_TYPE_OPTIONS: { id: string; label: string; hint: string }[] = [
+  { id: 'step', label: '肘线', hint: '直角折线' },
   { id: 'default', label: '曲线', hint: '贝塞尔曲线' },
   { id: 'straight', label: '直线', hint: '直连两点' },
-  { id: 'step', label: '肘线', hint: '直角折线' },
-  { id: 'smoothstep', label: '圆角肘', hint: '直角圆角折线' },
 ];

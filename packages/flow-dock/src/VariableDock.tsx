@@ -31,7 +31,15 @@ export interface DockProps {
   assignments: Assignments;
   /** 情景（scenario/view 模式时非空），用于变量状态徽章 N/A/待定 */
   scenario: ScenarioResult | null;
-  onAssign: (nodeId: string, edgeId: string) => void;
+  /** 全图视角（true=路线外不压暗），仅情景导航模式有意义 */
+  focusAll: boolean;
+  onToggleFocus: () => void;
+  /** 情景步进历史（M3）：有序决策序列与回退/前进 */
+  stepsCount: number;
+  redoCount: number;
+  onStepBack: () => void;
+  onStepForward: () => void;
+  onAssign: (nodeId: string, edgeId: string, visit?: number) => void;
   onClearAll: () => void;
   onPreset: () => void;
   onAddNode: () => void;
@@ -70,7 +78,7 @@ export interface DockProps {
   selectedCount: number;
 }
 
-const STATUS_TEXT: Record<string, string> = { done: '已选', pending: '待定', na: 'N/A', free: '未选' };
+const STATUS_TEXT: Record<string, string> = { done: '已选', pending: '待定', na: '未经过', free: '未选' };
 
 function varStatus(
   v: FlowVariable,
@@ -97,6 +105,12 @@ export function VariableDock({
   variables,
   assignments,
   scenario,
+  focusAll,
+  onToggleFocus,
+  stepsCount,
+  redoCount,
+  onStepBack,
+  onStepForward,
   onAssign,
   onClearAll,
   onPreset,
@@ -233,12 +247,61 @@ export function VariableDock({
         {editable && candidateCount > varsCount && (
           <span className="vh-hint">另有 {candidateCount - varsCount} 个候选</span>
         )}
+        <span className="dock-top-spacer" />
+        {/* 情景导航：视角切换 + 重置（原「清除赋值」在底部易被忽略，上移到变量区头部） */}
+        {showNavActions && (
+          <>
+            <button
+              className="vh-focus"
+              onClick={onToggleFocus}
+              data-testid="focus-toggle"
+              title={focusAll ? '回到「仅路径」视角：路线之外压暗' : '切到「全图」视角：保留路线强调，不再压暗其他内容'}
+            >
+              {focusAll ? '仅路径' : '全图'}
+            </button>
+            <button
+              className="vh-reset"
+              onClick={onClearAll}
+              disabled={!hasAssignments}
+              data-testid="reset-nav"
+              aria-label="重置导航"
+              title="清空所有已选分支，从入口重新开始"
+            >
+              ⟲
+            </button>
+          </>
+        )}
         {editable && candidateCount > 0 && (
           <button className="vh-manage" onClick={onManageVars}>
             管理变量
           </button>
         )}
       </div>
+      {/* 情景步进条（M3）：上一步/下一步 + 决策计数；有历史或可恢复时出现 */}
+      {showNavActions && (stepsCount > 0 || redoCount > 0) && (
+        <div className="step-bar" data-testid="step-bar">
+          <button
+            className="sb-btn"
+            onClick={onStepBack}
+            disabled={stepsCount === 0}
+            data-testid="step-back"
+            title="回退一条决策（可穿越回路）"
+          >
+            ⟲ 上一步
+          </button>
+          <span className="sb-count">决策 {stepsCount}{redoCount > 0 ? ` · 可恢复 ${redoCount}` : ''}</span>
+          <button
+            className="sb-btn"
+            onClick={onStepForward}
+            disabled={redoCount === 0}
+            data-testid="step-forward"
+            title="恢复被回退的决策"
+          >
+            下一步 ⟳
+          </button>
+        </div>
+      )}
+
       <div className="var-list">
         {variables.length === 0 && (
           <div className="var-empty">
@@ -249,12 +312,16 @@ export function VariableDock({
         )}
         {variables.map((v, i) => {
           const st = varStatus(v, assignments, scenario);
+          /* 环上第 N 次经过该判断点（N>0）：徽章标注，让用户知道这是回路中的再次决策 */
+          const visit = scenario?.pendingVisits?.[v.nodeId] ?? 0;
           return (
             <div key={v.nodeId} className={`var-row st-${st}`} data-var={v.nodeId}>
               <div className="var-name">
                 <span className="var-idx">{i + 1}</span>
                 <span className="var-label">{v.name}</span>
-                <span className={`var-badge ${st}`}>{STATUS_TEXT[st]}</span>
+                <span className={`var-badge ${st}`}>
+                  {STATUS_TEXT[st]}{st === 'pending' && visit > 0 ? ` · 第${visit + 1}次` : ''}
+                </span>
                 {editable && (
                   <button
                     className="var-x"
@@ -273,8 +340,16 @@ export function VariableDock({
                     <button
                       key={o.edgeId}
                       className={`opt ${on ? 'on' : ''}`}
-                      disabled={st === 'na' || mode === 'edit' || mode === 'view'}
-                      onClick={() => onAssign(v.nodeId, o.edgeId)}
+                      /* N/A（未经过）不再禁用：回路/分支未接通时仍可预选，
+                         否则用户失去赋值入口 → 起点判错会演变成永久死锁 */
+                      disabled={mode === 'edit' || mode === 'view'}
+                      onClick={() =>
+                        onAssign(
+                          v.nodeId,
+                          o.edgeId,
+                          st === 'pending' ? scenario?.pendingVisits?.[v.nodeId] : undefined
+                        )
+                      }
                       title={on ? '取消该取值' : `沿「${o.label}」继续演示`}
                     >
                       {o.label}
@@ -347,12 +422,14 @@ export function VariableDock({
             className="ghost"
             onClick={onPreset}
             disabled={!canPreset}
-            title={!variables.length ? '当前没有启用变量' : '一键还原示例深路径'}
+            data-testid="preset-btn"
+            title={
+              !variables.length
+                ? '当前没有启用变量'
+                : '从入口自动走一条示例路线：每个判断点取分支最多、走得最远的一条'
+            }
           >
-            一键示例赋值
-          </button>
-          <button className="ghost" onClick={onClearAll} disabled={!hasAssignments}>
-            清除赋值
+            一键示例路线
           </button>
         </div>
       )}

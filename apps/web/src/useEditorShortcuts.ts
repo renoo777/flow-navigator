@@ -1,7 +1,13 @@
 /** E2 编辑器键盘层：Ctrl+C/V/X/D · Ctrl+Z/Y(Shift+Z) · 方向键微调 · F2/Enter 改名 · Esc · Ctrl+A
- *  只在「编辑模式且非只读」生效；输入框/浮层/Modal 打开时自动让位。 */
+ *  只在「编辑模式且非只读」生效；输入框/浮层/Modal 打开时自动让位。
+ *
+ *  粘贴（Ctrl+V）两套路：
+ *  ① paste 事件（首选）：临时把焦点交给离屏可编辑元素，浏览器把剪贴板内容派发到它上面，
+ *     可同时拿到 text/html（飞书画板）与 text/plain（本软件内部载荷），完全不依赖剪贴板权限；
+ *  ② clipboard API 兜底：浏览器没派发 paste 时（焦点受限 / 权限拒绝）退回 readText + read()。 */
 import { useCallback, useEffect, useRef } from 'react';
 import { useReactFlow, type Edge } from '@xyflow/react';
+import { isFeishuWhiteboardHtml, parseFeishuWhiteboard, type ImportedGraph } from '@flow/core';
 import { useAppStore, type FlowContent } from './store';
 import type { SopFlowNode } from '@flow/canvas';
 
@@ -32,8 +38,9 @@ function inOverlay(): boolean {
 }
 function isTypingTarget(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
-  if (!el) return false;
-  const tag = el.tagName;
+  /* target 不一定是 Element（合成事件可能直接打在 window/document 上）→ 守卫后再取 tag/closest */
+  if (!el || typeof el.closest !== 'function') return false;
+  const tag = el.tagName ?? '';
   return (
     tag === 'INPUT' ||
     tag === 'TEXTAREA' ||
@@ -41,6 +48,53 @@ function isTypingTarget(t: EventTarget | null): boolean {
     el.isContentEditable ||
     !!el.closest('[contenteditable="true"]')
   );
+}
+
+/** 画布可视中心（屏幕坐标），粘贴落点用 */
+function canvasCenter(): { x: number; y: number } | null {
+  const wrap = document.querySelector('.canvas-wrap');
+  const r = wrap?.getBoundingClientRect();
+  return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+}
+
+/** 离屏可编辑元素：Ctrl+V 时接管焦点，让浏览器把 paste 派发过来（见文件头注释） */
+function makePasteProbe(): HTMLElement | null {
+  try {
+    const el = document.createElement('div');
+    el.setAttribute('contenteditable', 'true');
+    el.setAttribute('aria-hidden', 'true');
+    el.tabIndex = -1;
+    el.style.cssText =
+      'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(el);
+    el.focus();
+    return el;
+  } catch {
+    return null;
+  }
+}
+
+/** 读系统剪贴板里的 text/html（异步剪贴板 API；无权限时静默返回空串） */
+async function readClipboardHtml(): Promise<string> {
+  try {
+    const clip = navigator.clipboard as (Clipboard & { read?: () => Promise<ClipboardItem[]> }) | undefined;
+    if (!clip?.read) return '';
+    const items = await clip.read();
+    for (const item of items) {
+      if (item.types.includes('text/html')) {
+        const blob = await item.getType('text/html');
+        return await blob.text();
+      }
+    }
+  } catch {
+    /* 无权限 / 非安全上下文：静默，走 paste 事件路径 */
+  }
+  return '';
+}
+
+function reportImportError(e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  window.alert(`剪贴板里的画板数据没能解析成功（${msg}）。\n可在飞书画板里重新复制一次再试。`);
 }
 
 /** 从当前选中构造剪贴板载荷 */
@@ -132,9 +186,16 @@ function remapAndApply(payload: ClipPayload, atFlow: { x: number; y: number } | 
   useAppStore.getState().applyPaste(nodes, edges);
 }
 
-export function useEditorShortcuts() {
+export function useEditorShortcuts(opts?: {
+  /** 剪贴板里识别出外部画板图（飞书）时的回调，由调用方决定如何落地 */
+  onExternalGraph?: (graph: ImportedGraph) => void;
+}) {
   const rf = useReactFlow<SopFlowNode, Edge>();
   const clipRef = useRef<ClipPayload | null>(null);
+  const probeRef = useRef<HTMLElement | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const suppressUntilRef = useRef(0);
+  const onExternalGraph = opts?.onExternalGraph;
 
   const selectedCount = () => useAppStore.getState().nodes.filter((n) => n.selected).length;
 
@@ -164,12 +225,24 @@ export function useEditorShortcuts() {
         }
         payload = parseClipText(text);
         if (payload) clipRef.current = payload;
+        else if (onExternalGraph) {
+          /* 不是本软件内部载荷 → 看看是不是飞书画板 */
+          const html = await readClipboardHtml();
+          if (isFeishuWhiteboardHtml(html)) {
+            try {
+              onExternalGraph(parseFeishuWhiteboard(html));
+            } catch (err) {
+              reportImportError(err);
+            }
+            return;
+          }
+        }
       }
       if (!payload) return;
       const atFlow = eventPoint ? rf.screenToFlowPosition(eventPoint) : null;
       remapAndApply(payload, atFlow);
     },
-    [rf]
+    [rf, onExternalGraph]
   );
 
   const handleKey = useCallback(
@@ -180,26 +253,28 @@ export function useEditorShortcuts() {
 
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key;
+      /* 快捷键统一按小写判定：CapsLock / 部分键盘布局下 Ctrl+C 送来的 key 是大写 'C' */
+      const k = key.toLowerCase();
 
-      if (mod && (key === 'z' || key === 'Z')) {
+      if (mod && k === 'z') {
         e.preventDefault();
         if (e.shiftKey) s.redo();
         else s.undo();
         return;
       }
-      if (mod && key === 'y') {
+      if (mod && k === 'y') {
         e.preventDefault();
         s.redo();
         return;
       }
-      if (mod && key === 'c') {
+      if (mod && k === 'c') {
         if (selectedCount() > 0) {
           e.preventDefault();
           void doCopy(false);
         }
         return;
       }
-      if (mod && key === 'x') {
+      if (mod && k === 'x') {
         if (selectedCount() > 0) {
           e.preventDefault();
           void doCopy(true);
@@ -207,7 +282,7 @@ export function useEditorShortcuts() {
         return;
       }
       // Ctrl+V 统一走 capture 阶段 onPasteAt（可判断鼠标是否在画布内）
-      if (mod && key === 'd') {
+      if (mod && k === 'd') {
         e.preventDefault();
         const payload = clipRef.current ?? buildClip();
         if (!payload) return;
@@ -215,7 +290,7 @@ export function useEditorShortcuts() {
         remapAndApply(payload, null);
         return;
       }
-      if (mod && (key === 'a' || key === 'A')) {
+      if (mod && k === 'a') {
         e.preventDefault();
         useAppStore.setState({
           nodes: s.nodes.map((n) => ({ ...n, selected: true })),
@@ -257,32 +332,76 @@ export function useEditorShortcuts() {
     [rf, doCopy, doPaste]
   );
 
-  /** 供画布在粘贴点使用：Ctrl+V 时若鼠标在画布内，粘贴跟随鼠标（FlowCanvas onPaneClick detail2 之外）
-   *  简化：由全局 keydown 直接取 e.clientX/Y 画布区域坐标 */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => handleKey(e);
+
+    const clearProbe = () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      const el = probeRef.current;
+      probeRef.current = null;
+      el?.remove();
+    };
+
+    /* paste 事件：能拿到完整 clipboardData（text/html + text/plain），无需剪贴板权限 */
+    const onPasteEvt = (e: ClipboardEvent) => {
+      const fromProbe = !!probeRef.current && e.target === probeRef.current;
+      if (probeRef.current) clearProbe();
+      if (suppressUntilRef.current > Date.now()) return;
+      if (!fromProbe && (inOverlay() || isTypingTarget(e.target))) return;
+      const s = useAppStore.getState();
+      if (!s.docId || s.readonly || s.mode !== 'edit') return;
+
+      const html = e.clipboardData?.getData('text/html') ?? '';
+      if (isFeishuWhiteboardHtml(html)) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          onExternalGraph?.(parseFeishuWhiteboard(html));
+        } catch (err) {
+          reportImportError(err);
+        }
+        return;
+      }
+      const payload = parseClipText(e.clipboardData?.getData('text/plain') ?? '');
+      if (!payload) return;
+      e.preventDefault();
+      e.stopPropagation();
+      clipRef.current = payload;
+      const cp = canvasCenter();
+      remapAndApply(payload, cp ? rf.screenToFlowPosition(cp) : null);
+    };
+
+    /* Ctrl+V：把焦点短暂交给离屏可编辑元素，等浏览器派发 paste；300ms 没来就走 API 兜底 */
     const onPasteAt = (e: KeyboardEvent) => {
       if (inOverlay() || isTypingTarget(e.target)) return;
       const s = useAppStore.getState();
       if (!s.docId || s.readonly || s.mode !== 'edit') return;
-      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-        // 键盘事件无指针坐标：粘贴落到画布可视中心
-        const wrap = document.querySelector('.canvas-wrap');
-        const r = wrap?.getBoundingClientRect();
-        if (r) {
-          e.preventDefault();
-          e.stopPropagation();
-          void doPaste({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
-        }
-      }
+      if (!((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V'))) return;
+      const probe = makePasteProbe();
+      if (!probe) return;
+      probeRef.current = probe;
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        if (!probeRef.current) return; // paste 已到达并被处理
+        clearProbe();
+        suppressUntilRef.current = Date.now() + 1200; // 防止兜底后再来一次 paste 造成双粘贴
+        void doPaste(canvasCenter());
+      }, 300);
     };
+
     window.addEventListener('keydown', onKey);
     window.addEventListener('keydown', onPasteAt, true);
+    window.addEventListener('paste', onPasteEvt, true);
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keydown', onPasteAt, true);
+      window.removeEventListener('paste', onPasteEvt, true);
+      clearProbe();
     };
-  }, [handleKey, doPaste]);
+  }, [handleKey, doPaste, onExternalGraph, rf]);
 
   return null;
 }

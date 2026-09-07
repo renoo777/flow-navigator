@@ -77,6 +77,18 @@ export interface ScenarioResult {
   pendingVars: Set<string>;
   /** 本轮情景走不到的决策变量（N/A） */
   naVars: FlowVariable[];
+  /** 每个节点在本次遍历中被经过的次数（回路里同一判断点可多次到达） */
+  visitCounts: Record<string, number>;
+  /** pending 决策节点的「第几次经过」：nodeId -> visit 下标（0 起） */
+  pendingVisits: Record<string, number>;
+  /** 当前路径上被走到的回边（返工/循环连线）edge.id 集合 —— 用于画循环标记 */
+  loopEdges: Set<string>;
+}
+
+/** 情景导航的一条有序决策：第 visit 次经过 nodeId 时选了 edgeId 这条出口 */
+export interface ScenarioStep {
+  nodeId: string;
+  edgeId: string;
 }
 
 /** 变量取值表：变量节点 id -> 选中出口的 edge id（缺省=未赋值） */

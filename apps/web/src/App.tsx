@@ -12,14 +12,17 @@ import {
 import {
   computeScenario,
   deriveVariableCandidates,
+  layeredLayout,
   layoutGraph,
   resolveVariables,
   type FlowVariable,
+  type ImportedGraph,
   type NodeKind,
 } from '@flow/core';
 import { FlowCanvas, TypePicker, type CommandItem, type NodePaint, type SopFlowNode } from '@flow/canvas';
 import { VariableDock } from '@flow/dock';
 import { VariableGuideModal, VariableManageModal } from './VarModals';
+import { PasteImportModal, type ImportLayout } from './PasteImportModal';
 import { LibraryScreen } from './LibraryScreen';
 import { useAppStore } from './store';
 import { useEditorShortcuts } from './useEditorShortcuts';
@@ -96,6 +99,8 @@ function EditorScreen() {
     mode,
     view,
     assignments,
+    steps,
+    redoSteps,
     enabledVarNodeIds,
     defaultEdgeType,
     picker,
@@ -103,6 +108,7 @@ function EditorScreen() {
     redoStack,
     snapEnabled,
     gridVisible,
+    focusAll,
     onNodesChange,
     onEdgesChange,
     onConnect,
@@ -112,6 +118,8 @@ function EditorScreen() {
     assign,
     clearAssignments,
     presetAssignments,
+    stepBack,
+    stepForward,
     relayout,
     localRelayout,
     openPicker,
@@ -130,6 +138,7 @@ function EditorScreen() {
     redo,
     setSnap,
     setGridVisible,
+    setFocusAll,
     paintNodes,
     deleteSelected,
     clearSelection,
@@ -138,7 +147,11 @@ function EditorScreen() {
     toggleTheme,
   } = useAppStore();
   const rf = useReactFlow<SopFlowNode, Edge>();
-  useEditorShortcuts();
+
+  /* —— 外部画板粘贴导入（飞书）：hook 识别后交给这里确认再落地 —— */
+  const [pendingImport, setPendingImport] = useState<ImportedGraph | null>(null);
+  const handleExternalGraph = useCallback((g: ImportedGraph) => setPendingImport(g), []);
+  useEditorShortcuts({ onExternalGraph: handleExternalGraph });
 
   /* —— 变量派生：候选（全 ≥2 分支）/ 启用（导航决策点）—— */
   const coreFrom = useCallback(
@@ -173,8 +186,9 @@ function EditorScreen() {
   const scenario = useMemo(() => {
     if (mode !== 'scenario') return null;
     const { nodes: cn, edges: ce } = coreFrom();
-    return computeScenario(cn, ce, variables, assignments);
-  }, [mode, coreFrom, variables, assignments]);
+    /* 传有序决策序列而非 assignments：环上同一判断点可有多次不同选择（M3） */
+    return computeScenario(cn, ce, variables, steps);
+  }, [mode, coreFrom, variables, steps]);
 
   const hasStart = nodes.some((n) => n.data?.kind === 'io-start');
   const hasEnd = nodes.some((n) => n.data?.kind === 'io-end');
@@ -280,6 +294,73 @@ function EditorScreen() {
     localRelayout();
     requestAnimationFrame(() => rf.fitView({ padding: 0.18, duration: 250 }));
   }, [rf, localRelayout]);
+
+  /** 外部画板导入落地：节点 id 重新签发（避免与既有节点/二次导入撞号），可替换或追加
+   *  edgeType = 用户在弹窗里挑的连线样式（肘线 / 曲线 / 直线），同时成为本图新连线的默认样式 */
+  const handleImportApply = useCallback(
+    (layout: ImportLayout, replace: boolean, edgeType: string) => {
+      const g = pendingImport;
+      if (!g) return;
+      const s = useAppStore.getState();
+      s.mark();
+      const remap = new Map<string, string>();
+      const stamp = Date.now().toString(36);
+      const nodes: SopFlowNode[] = g.nodes.map((n, i) => {
+        const id = `n${stamp}${i.toString(36)}`;
+        remap.set(n.id, id);
+        return {
+          id,
+          type: 'sop',
+          position: { x: n.x, y: n.y },
+          data: { label: n.label, kind: n.kind, talk: [] },
+          selected: false,
+        };
+      });
+      /* 智能重排：按连线分层 + 保留左右分支顺序 + 按卡片真实尺寸拉开间距（默认） */
+      if (layout === 'reflow') {
+        const pos = layeredLayout(
+          nodes.map((n) => ({ id: n.id, label: String(n.data.label ?? ''), x: n.position.x, y: n.position.y })),
+          g.edges
+            .map((e) => ({ source: remap.get(e.source) ?? '', target: remap.get(e.target) ?? '' }))
+            .filter((e) => e.source && e.target)
+        );
+        nodes.forEach((n) => {
+          const p = pos[n.id];
+          if (p) n.position = { x: p.x, y: p.y };
+        });
+      }
+      const edges: Edge[] = g.edges.flatMap((e, i) => {
+        const source = remap.get(e.source);
+        const target = remap.get(e.target);
+        if (!source || !target) return [];
+        return [
+          {
+            id: `e${stamp}-${i}`,
+            source,
+            target,
+            /* 平行边（同一对节点间多条分支）各自独立 id，否则后者覆盖前者 */
+            type: edgeType,
+            label: e.label,
+            selected: false,
+          } as Edge,
+        ];
+      });
+      useAppStore.setState({
+        nodes: replace ? nodes : [...s.nodes, ...nodes],
+        edges: replace ? edges : [...s.edges, ...edges],
+        assignments: replace ? {} : s.assignments,
+        ...(replace ? { steps: [], redoSteps: [] } : {}),
+        /* 替换 = 一张新图：变量启用集合回到未决定，让「设为变量」引导再走一次 */
+        ...(replace ? { enabledVarNodeIds: null } : {}),
+        /* 顺手把本次选的连线样式记为本图默认，之后手拉的线也跟它一致 */
+        defaultEdgeType: replace ? edgeType : s.defaultEdgeType,
+        mode: 'edit',
+      });
+      setPendingImport(null);
+      requestAnimationFrame(() => rf.fitView({ padding: 0.15, duration: 320 }));
+    },
+    [pendingImport, rf, relayout, defaultEdgeType]
+  );
 
   /** B2 PNG 图片导出：按节点 bounds 计算视口 + 懒加载 html-to-image */
   const handleExportPng = useCallback(async () => {
@@ -464,6 +545,12 @@ function EditorScreen() {
         variables={variables}
         assignments={assignments}
         scenario={scenario}
+        focusAll={focusAll}
+        onToggleFocus={() => setFocusAll(!focusAll)}
+        stepsCount={steps.length}
+        redoCount={redoSteps.length}
+        onStepBack={stepBack}
+        onStepForward={stepForward}
         onAssign={assign}
         onClearAll={clearAssignments}
         onPreset={presetAssignments}
@@ -512,6 +599,7 @@ function EditorScreen() {
           view={view}
           variables={variables}
           scenario={scenario}
+          focusAll={focusAll}
           onNodesChange={onNodesChange as (c: NodeChange<SopFlowNode>[]) => void}
           onEdgesChange={onEdgesChange as (c: EdgeChange<Edge>[]) => void}
           onConnect={handleConnect}
@@ -538,6 +626,16 @@ function EditorScreen() {
       {/* 变量首次识别引导（导入/空白新增后首个候选出现） */}
       {guideOpen && candidates.length > 0 && (
         <VariableGuideModal candidates={candidates} onDecide={handleGuideDecide} />
+      )}
+
+      {/* 粘贴外部画板（飞书）后的导入确认 */}
+      {pendingImport && (
+        <PasteImportModal
+          graph={pendingImport}
+          hasContent={nodes.length > 0}
+          onCancel={() => setPendingImport(null)}
+          onApply={handleImportApply}
+        />
       )}
 
       {/* 变量管理面板 */}
