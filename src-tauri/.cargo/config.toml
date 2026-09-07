@@ -1,4 +1,0 @@
-# Rust 构建产物改放 D 盘：C 盘只有 120G，src-tauri/target 全量编译后可占 5G+
-# 迁移后首次 tauri dev / build 会全量重编（约 6-8 分钟），之后为增量编译。
-[build]
-target-dir = "D:/cargo-target/flow-navigator"

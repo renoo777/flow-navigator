@@ -26,3 +26,6 @@ shot_*.js
 run_regression.js
 probe-*/
 *_build*.png
+
+# 本地 cargo 机器配置（target-dir 等，勿提交——会破坏 CI 跨平台构建）
+src-tauri/.cargo/
