@@ -479,7 +479,9 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 /* 连线：未走完 = 流动虚线（仍在推进）；已确定 = 实线 + 发光管道 */
 .react-flow__edge.route-on:not(.route-done) .react-flow__edge-path {
-  stroke-dasharray: 9 5;
+  /* 周期必须整除 @keyframes dash-flow 的 -16，否则每圈复位时虚线会跳 2px（看着像卡顿）。
+     10+6=16 整除 —— 循环首尾图案完全一致，滚动才连贯。 */
+  stroke-dasharray: 10 6;
   animation: dash-flow 900ms linear infinite;
 }
 .react-flow__edge.route-done .react-flow__edge-path {
@@ -1034,7 +1036,9 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   from { opacity: 0; scale: 0.94; }
   to { opacity: 1; scale: 1; }
 }
-/* 链路连线流动（上下游高亮时用）：dash 沿路径行进，指示走向 */
+/* 链路连线流动（上下游高亮时用）：dash 沿路径行进，指示走向。
+   注意：位移 -16 意味着所有使用本动画的 stroke-dasharray 周期必须整除 16
+   （如 10 6 / 8 8），否则每圈复位虚线会跳格、看起来一卡一卡。 */
 @keyframes dash-flow { to { stroke-dashoffset: -16; } }
 /* 主按钮光泽扫过：极克制的一道高光，只在 hover 时播一次 */
 @keyframes sheen {
@@ -1264,12 +1268,12 @@ body::before {
   transition: scale var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
 }
 
-/* 拉线预览：流动虚线 + 端点微光，明确"这条线正从这儿连过去" */
+/* 拉线预览：流动虚线 + 端点微光，明确"这条线正从这儿连过去"（10+6=16 整除 dash-flow -16，无缝） */
 .react-flow__connectionline .react-flow__edge-path,
 .react-flow__connection-path {
   stroke: var(--accent);
   stroke-width: 2;
-  stroke-dasharray: 6 4;
+  stroke-dasharray: 10 6;
   animation: dash-flow 600ms linear infinite;
 }
 
