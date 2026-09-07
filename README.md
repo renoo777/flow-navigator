@@ -47,6 +47,46 @@
 
 **自动更新**：Windows NSIS 安装版启动时会自动检查 GitHub Releases 新版本（v0.1.4+），发现新版弹窗确认后即下载安装、自动重启，无需手动重装。也可在主页标题旁「ⓘ」关于面板里点「检查更新」手动触发。
 
+<details>
+<summary><strong>🍎 macOS 用户：首次打开提示「已损坏，无法打开」怎么办</strong></summary>
+
+这是 macOS Gatekeeper 的门禁——安装包**没有损坏**，只是未经过 Apple 公证（开发者账号 $99/年，本项目暂未购买），从网上下载的应用会被打上隔离标记。
+
+**方法一（终端，最稳妥）** —— 装到「应用程序」后执行一次：
+
+```bash
+sudo xattr -rd com.apple.quarantine "/Applications/Flow Navigator.app"
+```
+
+输入开机密码（输入时屏幕不显示字符，回车即可），之后正常双击打开。若提示 `No such xattr`，改跑这条：
+
+```bash
+xattr -cr "/Applications/Flow Navigator.app"
+```
+
+**方法二（图形界面）**：系统设置 → 隐私与安全性 → 滚到「安全性」→ 找到「Flow Navigator 已被阻止…」→ 点 **仍要打开**。
+
+**方法三（从根上避免）**：用终端下载——命令行下载的文件不会被打隔离标记，装完即可直接打开：
+
+```bash
+cd ~/Downloads
+curl -LO https://github.com/renoo777/flow-navigator/releases/latest/download/Flow.Navigator_0.1.5_aarch64.dmg
+```
+
+（M 系列用 `aarch64`，Intel 把链接末尾改成 `x64`）
+
+**校验**（可选，确认安装包本身没问题）：
+
+```bash
+codesign -dv --verbose=4 "/Applications/Flow Navigator.app" 2>&1 | head
+```
+
+看到 `Signature=adhoc` 属正常（未付费签名的开源应用都是这样）。
+
+> 选安装包：M 系列芯片选 `aarch64.dmg`，Intel 芯片选 `x64.dmg`（M 系列也能跑 `x64.dmg`，走 Rosetta 转译，略慢）。
+
+</details>
+
 数据全部保存在本机（浏览器 localStorage / WebView 存储），**无账号、无上传、离线可用**。
 
 ### 在线版
