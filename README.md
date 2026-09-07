@@ -10,12 +10,12 @@
 
 传统流程图工具（ProcessOn / drawio / Miro）画出的是一张**静态全景图**：节点一多，读者要在几十个框和箭头里自己找路。Flow Navigator 的思路不同 —— **流程图不该被"看"，该被"走"**：
 
-| 传统流程图 | Flow Navigator |
-|---|---|
-| 全部节点同等重要 | 选定变量后，路线高亮、无关分支置灰 |
-| 读者自己找路径 | 变量取值驱动，路线实时收敛 |
+| 传统流程图     | Flow Navigator    |
+| --------- | ----------------- |
+| 全部节点同等重要  | 选定变量后，路线高亮、无关分支置灰 |
+| 读者自己找路径   | 变量取值驱动，路线实时收敛     |
 | 截图发群里靠嘴解释 | 一键导出 1200×630 分享图 |
-| 改一次截图重发一次 | 发链接，对方自己走路线 |
+| 改一次截图重发一次 | 发链接，对方自己走路线       |
 
 ## 功能
 
@@ -40,16 +40,17 @@
 
 到 [Releases](../../releases) 下载对应平台安装包（打 tag 后自动构建）：
 
-| 平台 | 格式 |
-|---|---|
-| Windows | `.exe`（NSIS，**支持自动更新**）/ `.msi`（不支持自更新，仅 IT 批量部署用） |
-| macOS Apple Silicon | `aarch64.dmg` |
-| macOS Intel | `x64.dmg` |
-| Linux | `.deb` / `.AppImage` / `.rpm` |
+| 平台                  | 格式                                                 |
+| ------------------- | -------------------------------------------------- |
+| Windows             | `.exe`（NSIS，**支持自动更新**）/ `.msi`（不支持自更新，仅 IT 批量部署用） |
+| macOS Apple Silicon | `aarch64.dmg`                                      |
+| macOS Intel         | `x64.dmg`                                          |
+| Linux               | `.deb` / `.AppImage` / `.rpm`                      |
 
 **自动更新**：Windows NSIS 安装版启动时会自动检查 GitHub Releases 新版本（v0.1.4+），发现新版弹窗确认后即下载安装、自动重启，无需手动重装。也可在主页标题旁「ⓘ」关于面板里点「检查更新」手动触发。
 
 <details>
+
 <summary><strong>🍎 macOS 用户：首次打开提示「已损坏，无法打开」怎么办</strong></summary>
 
 这是 macOS Gatekeeper 的门禁——安装包**没有损坏**，只是未经过 Apple 公证（开发者账号 $99/年，本项目暂未购买），从网上下载的应用会被打上隔离标记。
@@ -93,7 +94,7 @@ codesign -dv --verbose=4 "/Applications/Flow Navigator.app" 2>&1 | head
 
 ### 在线版
 
-无需安装，直接打开：**https://renoo777.github.io/flow-navigator/**（GitHub Pages，main 分支更新即自动部署）
+无需安装，直接打开：\*\*<https://renoo777.github.io/flow-navigator/> \** Pages，main 分支更新即自动部署）
 
 > 在线版与桌面版一样：数据只存本机浏览器，不上传服务器、无需注册。
 
@@ -114,11 +115,11 @@ npm run tauri:build  # 桌面端打包（产物在 src-tauri/target/release/bund
 
 ### 桌面端构建前置
 
-| 平台 | 依赖 |
-|---|---|
+| 平台      | 依赖                                                                                   |
+| ------- | ------------------------------------------------------------------------------------ |
 | Windows | [Rust](https://rustup.rs) + Visual Studio Build Tools（C++ 工作负载）；WebView2 Win10/11 自带 |
-| macOS | Rust + Xcode Command Line Tools |
-| Linux | Rust + `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf` |
+| macOS   | Rust + Xcode Command Line Tools                                                      |
+| Linux   | Rust + `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`            |
 
 ## 技术栈
 
@@ -164,11 +165,11 @@ git push origin v0.1.4
 
 费用：
 
-| 通道 | 手续费 | 单笔上限 |
-|---|---|---|
-| 微信赞赏码 | 0.38%（平台抽） | ≤ 200 元 |
-| 支付宝个人收款码 | 0%（自定） | ≤ 1000 元 / 日 ≤ 5 万 |
-| GitHub Sponsors（暂未开通） | 跨境通道 | 取决于发卡行 |
+| 通道                    | 手续费        | 单笔上限               |
+| --------------------- | ---------- | ------------------ |
+| 微信赞赏码                 | 0.38%（平台抽） | ≤ 200 元            |
+| 支付宝个人收款码              | 0%（自定）     | ≤ 1000 元 / 日 ≤ 5 万 |
+| GitHub Sponsors（暂未开通） | 跨境通道       | 取决于发卡行             |
 
 打赏纯自愿，与功能解锁无关 —— 每一笔都会花在更多打磨这件小事的周末下午茶 🍵。
 

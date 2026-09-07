@@ -7,3 +7,4 @@ export * from './snap';
 export * from './sample';
 export * from './feishu';
 export * from './reflow';
+export * from './anchor';

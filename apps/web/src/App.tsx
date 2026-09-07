@@ -12,6 +12,8 @@ import {
 import {
   computeScenario,
   deriveVariableCandidates,
+  estimateNodeSize,
+  inferAnchorSides,
   layeredLayout,
   layoutGraph,
   resolveVariables,
@@ -128,6 +130,7 @@ function EditorScreen() {
     renameEdge,
     setDefaultEdgeType,
     setEdgeTypes,
+    resetEdgeAnchors,
     setEnabledVars,
     toggleVarEnabled,
     openDoc,
@@ -329,10 +332,27 @@ function EditorScreen() {
           if (p) n.position = { x: p.x, y: p.y };
         });
       }
+      /* 锚点复用：飞书剪贴板只给了「谁连谁」（startObject/endObject），没有端口字段，
+         解析器已按飞书原始坐标反推出每条线的出/入侧（sourceSide/targetSide）。
+         「保留原布局」直接信任解析出的原画锚点 —— 粘贴出来就是你飞书里看到的那一侧；
+         「智能重排」坐标变了，按重排后的相对位置重新推（射线求交 = 最短连法）。 */
+      const boxOf = (n: SopFlowNode) => {
+        const s = estimateNodeSize(n, 'flow');
+        return { x: n.position.x, y: n.position.y, w: s.w, h: s.h };
+      };
+      const boxes = new Map(nodes.map((n) => [n.id, boxOf(n)]));
       const edges: Edge[] = g.edges.flatMap((e, i) => {
         const source = remap.get(e.source);
         const target = remap.get(e.target);
         if (!source || !target) return [];
+        let sides: { source?: string; target?: string } | null = null;
+        if (layout === 'keep' && e.sourceSide && e.targetSide) {
+          sides = { source: e.sourceSide, target: e.targetSide };
+        } else {
+          const bs = boxes.get(source);
+          const bt = boxes.get(target);
+          sides = bs && bt ? inferAnchorSides(bs, bt) : null;
+        }
         return [
           {
             id: `e${stamp}-${i}`,
@@ -342,6 +362,9 @@ function EditorScreen() {
             type: edgeType,
             label: e.label,
             selected: false,
+            /* 只做「初始落位」，不打 anchorPinned —— 之后挪节点仍会自动换边 */
+            sourceHandle: sides?.source,
+            targetHandle: sides?.target,
           } as Edge,
         ];
       });
@@ -488,6 +511,14 @@ function EditorScreen() {
     [onReconnect, setMode]
   );
 
+  const handleAnchorReset = useCallback(
+    (edgeIds: string[]) => {
+      resetEdgeAnchors(edgeIds);
+      setMode('edit');
+    },
+    [resetEdgeAnchors, setMode]
+  );
+
   /** Build L · 命令面板：全局动作一键直达（节点跳转项由画布自动生成） */
   const addAtCenter = useCallback(
     (kind: NodeKind) => {
@@ -608,6 +639,7 @@ function EditorScreen() {
           onPaneDoubleClick={handlePaneDoubleClick}
           onPaneClickClear={handlePaneClickClear}
           onEdgeTypeApply={handleEdgeTypeApply}
+          onEdgeAnchorReset={handleAnchorReset}
           defaultEdgeType={defaultEdgeType}
           editable={canEditGraph}
           onNodeDragStart={mark}

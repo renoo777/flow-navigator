@@ -220,13 +220,19 @@ function normalizeEdge(raw: unknown): Edge | null {
   const e = raw as Record<string, unknown>;
   if (typeof e.source !== 'string' || typeof e.target !== 'string') return null;
   const t = typeof e.type === 'string' && VALID_EDGE_TYPES.has(e.type) ? (e.type as string) : 'step';
-  return {
+  const out: Edge = {
     id: typeof e.id === 'string' && e.id ? e.id : edgeIdOf(e.source, e.target),
     source: e.source,
     target: e.target,
     type: t,
     label: typeof e.label === 'string' ? e.label : '',
   };
+  /* 锚点：sourceHandle/targetHandle 是「钉住的端点」坐标，data.anchorPinned 是钉住标记。
+     早期 normalizeEdge 只留四个字段，导入/镜像恢复会把它们抹掉 —— 手动摆好的端点一刷新就没了。 */
+  if (typeof e.sourceHandle === 'string' && e.sourceHandle) out.sourceHandle = e.sourceHandle;
+  if (typeof e.targetHandle === 'string' && e.targetHandle) out.targetHandle = e.targetHandle;
+  if (e.data && typeof e.data === 'object') out.data = e.data as Edge['data'];
+  return out;
 }
 
 /** 清洗「裸 JSON 内容态」→ 可用 FlowContent（null=结构不合法） */
@@ -551,6 +557,8 @@ export interface AppState {
   setDocName: (name: string) => void;
   setDefaultEdgeType: (t: string) => void;
   setEdgeTypes: (edgeIds: string[], t: string) => void;
+  /** 端点交还自动（清掉手动钉住的锚点） */
+  resetEdgeAnchors: (edgeIds: string[]) => void;
   setEnabledVars: (nodeIds: string[]) => void;
   toggleVarEnabled: (nodeId: string) => void;
   exportJSON: () => string;
@@ -647,6 +655,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  /**
+   * 拖动连线端点换节点 / 换边：
+   * 只要用户手动拖过，就把这条边的端点「钉住」（data.anchorPinned）——
+   * 否则画布每次渲染都按相对位置重算端点，用户刚摆好的位置一挪节点就跳回去。
+   */
   onReconnect: (oldEdge, conn) => {
     pushHistory();
     set((st) => ({
@@ -656,8 +669,9 @@ export const useAppStore = create<AppState>((set, get) => ({
               ...e,
               source: conn.source ?? e.source,
               target: conn.target ?? e.target,
-              sourceHandle: conn.sourceHandle ?? e.sourceHandle,
-              targetHandle: conn.targetHandle ?? e.targetHandle,
+              sourceHandle: conn.sourceHandle ?? e.sourceHandle ?? 'bottom',
+              targetHandle: conn.targetHandle ?? e.targetHandle ?? 'top',
+              data: { ...(e.data ?? {}), anchorPinned: true },
             }
           : e
       ),
@@ -1246,6 +1260,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       edges: st.edges.map((e) => (edgeIds.includes(e.id) ? { ...e, type: t } : e)),
     })),
 
+  /** 端点交还自动：清掉钉住标记，端点重新跟着节点相对位置走 */
+  resetEdgeAnchors: (edgeIds) => {
+    pushHistory();
+    set((st) => ({
+      edges: st.edges.map((e) => {
+        if (!edgeIds.includes(e.id)) return e;
+        const next: Edge = { ...e };
+        delete next.sourceHandle;
+        delete next.targetHandle;
+        const d = { ...((e.data ?? {}) as Record<string, unknown>) };
+        delete d.anchorPinned;
+        if (Object.keys(d).length) next.data = d;
+        else delete next.data;
+        return next;
+      }),
+    }));
+  },
+
   setEnabledVars: (nodeIds) => set({ enabledVarNodeIds: nodeIds }),
   toggleVarEnabled: (nodeId) =>
     set((st) => {
@@ -1403,6 +1435,11 @@ function scheduleSave(s: AppState) {
 }
 
 if (isBrowser) {
+  /* 开发期调试钩子：Playwright 探针靠它读取内部状态做断言（生产构建不会打进去）。
+     web 的 tsconfig 没引 vite/client 类型，故这里手动收窄 import.meta。 */
+  if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+    (window as unknown as Record<string, unknown>).__flowStore = useAppStore;
+  }
   /* 关闭/切后台：内容落库 + 立刻刷新文件镜像（退出不等 debounce） */
   window.addEventListener('beforeunload', () => {
     flushNow(useAppStore.getState());

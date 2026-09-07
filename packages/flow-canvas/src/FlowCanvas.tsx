@@ -34,7 +34,15 @@ import type {
   NodeKind,
   ScenarioResult,
 } from '@flow/core';
-import { computeSnap, deriveChapters, searchNodes, traceChain } from '@flow/core';
+import {
+  computeSnap,
+  deriveChapters,
+  inferAnchorSides,
+  isAnchorPinned,
+  searchNodes,
+  traceChain,
+  type AnchorBox,
+} from '@flow/core';
 import { EDGE_TYPE_OPTIONS, KIND_OPTIONS, KIND_TAG } from './appearance';
 import { CanvasSearch } from './components/CanvasSearch';
 import { CommandPalette, type CommandItem } from './components/CommandPalette';
@@ -65,6 +73,8 @@ export interface FlowCanvasProps {
   onPaneClickClear: () => void;
   /** 连线样式：edgeIds=null → 设为本图默认（新连线用）；非空 → 批量改这些边 */
   onEdgeTypeApply: (edgeIds: string[] | null, type: string) => void;
+  /** 把选中连线的端点交还给「自动选边」（之前被手动拖过端点钉住的线） */
+  onEdgeAnchorReset: (edgeIds: string[]) => void;
   defaultEdgeType: string;
   /** 可编辑（edit 且非只读） */
   editable: boolean;
@@ -289,6 +299,7 @@ export function FlowCanvas({
   commands,
   snapToGrid,
   gridVisible,
+  onEdgeAnchorReset,
 }: FlowCanvasProps) {
   const [editingEdge, setEditingEdge] = useState<{
     edgeId: string;
@@ -673,6 +684,8 @@ export function FlowCanvas({
           talk: n.data?.talk ?? [],
           locked,
           talkEditable,
+          /* 连接点是否可用：只读态关掉，情景导航里不再露出四个圆点 */
+          connectable: editable,
           ...(chainState ? { chain: chainState } : { chain: undefined }),
           /* 搜索：未命中淡出；命中项保持清晰（当前项由 search-active 描边强调） */
           ...(searching ? { searchDim: !isHit, searchActive: n.id === searchActiveId } : {}),
@@ -699,6 +712,37 @@ export function FlowCanvas({
       return '';
     },
     [variables]
+  );
+
+  /**
+   * 节点实测盒子（用于连线端点自动选边）。
+   * 用 measured（RF 实测）优先，未测量时退回估算宽高 —— 首帧未布局也能算出合理方向。
+   * 依赖 nodes：拖动节点时 positions 变化 → 锚点实时跟着换边（「箭头不再随位置乱变」的关键）。
+   */
+  const anchorBoxes = useMemo(() => {
+    const m = new Map<string, AnchorBox>();
+    nodes.forEach((n) => {
+      const w = n.measured?.width ?? 0;
+      const h = n.measured?.height ?? 0;
+      m.set(n.id, {
+        x: n.position.x,
+        y: n.position.y,
+        w: w > 0 ? w : 180,
+        h: h > 0 ? h : 46,
+      });
+    });
+    return m;
+  }, [nodes]);
+
+  /** 自动锚点：未钉住的边，端点跟着两节点相对位置走（射线求交，等价最短连线） */
+  const anchorOf = useCallback(
+    (source: string, target: string): { source: string; target: string } => {
+      const a = anchorBoxes.get(source);
+      const b = anchorBoxes.get(target);
+      if (!a || !b) return { source: 'bottom', target: 'top' };
+      return inferAnchorSides(a, b);
+    },
+    [anchorBoxes]
   );
 
   const displayedEdges = useMemo<Edge[]>(() => {
@@ -741,12 +785,16 @@ export function FlowCanvas({
           : 'route-off'
         : '';
       const cls = [chainCls, routeCls, loopCls].filter(Boolean).join(' ');
+      /* 端点选边：钉住过（用户拖过端点 / 导入时自带）就照旧，否则按相对位置自动 */
+      const pinned = isAnchorPinned(e.data);
+      const sides = pinned
+        ? { source: e.sourceHandle ?? 'bottom', target: e.targetHandle ?? 'top' }
+        : anchorOf(e.source, e.target);
       return {
         ...e,
         ...(cls ? { className: cls } : {}),
-        /* 四向连接点：老数据没有 handle 信息，默认仍是「下出上进」 */
-        sourceHandle: e.sourceHandle ?? 'bottom',
-        targetHandle: e.targetHandle ?? 'top',
+        sourceHandle: sides.source,
+        targetHandle: sides.target,
         label,
         style: {
           stroke: color,
@@ -766,7 +814,7 @@ export function FlowCanvas({
         labelBgBorderRadius: 4,
       };
     });
-  }, [edges, scenario, focusAll, routeDone, edgeLabelOf, chain, chainRes]);
+  }, [edges, scenario, focusAll, routeDone, edgeLabelOf, chain, chainRes, anchorOf]);
 
   /* —— 双击连线 chip → 浮层改名 —— */
   const onEdgeDoubleClick: EdgeMouseHandler = useCallback((e, edge) => {
@@ -814,6 +862,12 @@ export function FlowCanvas({
       : null
     : defaultEdgeType;
 
+  /** 选中连线里有多少条被手动钉住过端点 → 给出「交还自动」的出口 */
+  const pinnedSelCount = useMemo(
+    () => edges.filter((e) => selectedEdgeIds.includes(e.id) && isAnchorPinned(e.data)).length,
+    [edges, selectedEdgeIds]
+  );
+
   const showStyleBar = editable && edges.length > 0;
 
   const chainRootLabel = chain
@@ -824,8 +878,12 @@ export function FlowCanvas({
     <div className="canvas-wrap" ref={wrapperRef} onPointerMove={handlePointerMove}>
       <ReactFlow<SopFlowNode, Edge>
         /* Build M：只有情景态才挂 has-scenario —— 编辑态所有节点都是 st-active，
-           若不做这层区分，路线高亮会误伤编辑态的普通节点 */
-        className={scenario ? 'has-scenario' : ''}
+           若不做这层区分，路线高亮会误伤编辑态的普通节点。
+           no-connect：只读（情景导航/查看）时把四向连接点整体隐形 ——
+           连接点保留在 DOM 里（RF 要靠它算端点坐标），只是不显示、不可点。 */
+        className={[scenario ? 'has-scenario' : '', editable ? '' : 'no-connect']
+          .filter(Boolean)
+          .join(' ')}
         nodes={displayedNodes}
         edges={displayedEdges}
         nodeTypes={nodeTypes}
@@ -837,6 +895,11 @@ export function FlowCanvas({
         onConnect={editable ? onConnect : undefined}
         onReconnect={editable ? onReconnect : undefined}
         edgesReconnectable={editable}
+        /* 端点拖拽：松手靠近哪一侧的连接点就吸附到哪侧（reconnectRadius 放大到 22，
+           原来默认 10 太小，端点基本抓不住 → 用户感觉「线是死的拉不动」） */
+        reconnectRadius={22}
+        /* 连线落点吸附半径：整条边都能作为落点，不必精确命中 8px 小圆点 */
+        connectionRadius={34}
         onEdgeDoubleClick={editable ? onEdgeDoubleClick : undefined}
         onPaneClick={handlePaneClick}
         onNodeDragStart={onNodeDragStart}
@@ -1041,6 +1104,16 @@ export function FlowCanvas({
               </button>
             ))}
           </div>
+          {pinnedSelCount > 0 && (
+            <button
+              className="esb-auto"
+              data-testid="anchor-auto"
+              title="这些连线的端点被手动拖过，位置已固定。点这里交还给自动：端点重新跟着节点位置走"
+              onClick={() => onEdgeAnchorReset(selectedEdgeIds)}
+            >
+              ⟲ 端点自动（{pinnedSelCount}）
+            </button>
+          )}
         </div>
       )}
 

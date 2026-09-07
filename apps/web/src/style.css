@@ -706,6 +706,17 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .react-flow__handle.h-right { right: -5px; }
 .react-flow__handle.h-top { top: -5px; }
 .react-flow__handle.h-bottom { bottom: -5px; }
+/* 抓得住：8px 小圆点太难命中，套一层透明热区（视觉不变，可点范围放大到 ~22px） */
+.react-flow__handle::after {
+  content: ''; position: absolute; inset: -7px; border-radius: 50%;
+}
+/* 只读态（情景导航 / 查看）：连接点整体隐形。
+   注意用 opacity 而非 display:none —— RF 要读这些点的位置来算连线端点，
+   从 DOM 里摘掉会让所有连线失去落脚点。 */
+.react-flow.no-connect .react-flow__handle,
+.react-flow.no-connect .react-flow__handle:hover {
+  opacity: 0 !important; pointer-events: none;
+}
 /* 循环可视化：同一节点在本次路线里被经过多次 → 右上角「↻ N」角标 */
 .loop-badge {
   position: absolute; top: -9px; right: -9px; z-index: 2;
@@ -809,6 +820,8 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .esb-opt { border: 0; background: transparent; color: var(--ink-2); font-size: 11.5px; padding: 4px 8px; border-radius: 6px; cursor: pointer; transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .esb-opt:hover { background: var(--accent-soft); color: var(--accent); }
 .esb-opt.on { background: var(--accent); color: #fff; font-weight: 600; }
+.esb-auto { margin-left: 6px; border: 1px dashed var(--hairline-strong); background: transparent; color: var(--ink-2); font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.esb-auto:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 /* ============ E4 多选浮动工具条（选区上方） ============ */
 .selbar {

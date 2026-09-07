@@ -27,6 +27,8 @@
  * ## 文本
  * 文本在 `info.textV2.text`（URL 编码，`\n` 分行）；我们卡片是单行 nowrap，故换行折叠为空格。
  */
+import { inferAnchorSides } from './anchor';
+import type { AnchorSide } from './anchor';
 import type { NodeKind } from './types';
 
 /** 飞书私有剪贴板负载的标识 */
@@ -48,6 +50,10 @@ export interface ImportedEdge {
   source: string;
   target: string;
   label: string;
+  /** 按飞书原始坐标推断的「出线侧」（两端中心射线与盒子求交 = 原画里线贴的那一侧） */
+  sourceSide?: AnchorSide;
+  /** 按飞书原始坐标推断的「入线侧」 */
+  targetSide?: AnchorSide;
 }
 
 export interface ImportStats {
@@ -255,6 +261,12 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
   let labeled = 0;
   let parallel = 0;
 
+  /** 节点原始盒子（画板坐标；baseV2 的 x/y 是左上角）—— 用于把每条线的出/入侧反推回
+   * 飞书原画的样子（上游在下 → 下出上进；左右排布 → 右出左进/左出右进）。 */
+  const rawBoxById = new Map<string, { x: number; y: number; w: number; h: number }>(
+    raws.map((n) => [n.id, n])
+  );
+
   items.forEach((it) => {
     const info = asRecord(it?.info);
     const conn = asRecord(info.connectorV2);
@@ -277,7 +289,16 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
       arr.push(label);
       outLabels.set(source, arr);
     }
-    edges.push({ source, target, label });
+    const bs = rawBoxById.get(source);
+    const bt = rawBoxById.get(target);
+    const sides = bs && bt ? inferAnchorSides(bs, bt) : null;
+    edges.push({
+      source,
+      target,
+      label,
+      sourceSide: sides?.source,
+      targetSide: sides?.target,
+    });
   });
 
   /* ---------- 3) 定 kind：菱形 → decision；矩形 + 成对判断词 → decision ---------- */
