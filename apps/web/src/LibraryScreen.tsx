@@ -230,11 +230,10 @@ export function LibraryScreen() {
               className="lib-about-btn"
               onClick={() => setAboutOpen(true)}
               data-testid="open-about"
-              title="关于本软件 · 请作者喝杯咖啡"
-              aria-label="打开关于/支持作者面板"
+              title="关于本软件"
+              aria-label="打开关于面板"
             >
-              <span className="heart" aria-hidden="true" />
-              支持作者
+              ⓘ
             </button>
           </div>
           <div className="lib-sub">复杂流程图按变量拆解成可演示情景 · 数据仅存本机浏览器</div>

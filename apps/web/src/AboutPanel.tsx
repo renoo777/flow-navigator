@@ -1,5 +1,5 @@
-/** 关于 / 支持作者面板
- *  双码：微信 + 支付宝；署名作者。
+/** 关于面板
+ *  署名作者 + 版本/检查更新；打赏区默认折叠（主流软件惯例：二维码从不首屏平铺，IINA/Motrix 式）。
  *  风格统一复用 ModalShell：Esc 关闭、Tab 焦点圈禁、focus 归位；
  *  内容区是双码左右并排（窄屏退回上下） + 底部一句话诉求 + GitHub sponsor 入口。 */
 import { useEffect, useState } from 'react';
@@ -73,6 +73,7 @@ function QrCard({
 
 export function AboutPanel({ onClose }: { onClose?: () => void }) {
   const [copied, setCopied] = useState<Platform | null>(null);
+  const [donateOpen, setDonateOpen] = useState(false);
   const [ver, setVer] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -107,8 +108,8 @@ export function AboutPanel({ onClose }: { onClose?: () => void }) {
 
   return (
     <ModalShell
-      title="关于 / 支持作者"
-      subtitle="如果它真的帮你梳理清楚了一条 SOP，欢迎请作者喝杯咖啡 ✦"
+      title="关于"
+      subtitle="Flow Navigator · 变量导航器"
       onClose={onClose}
       testid="about-modal"
     >
@@ -127,46 +128,61 @@ export function AboutPanel({ onClose }: { onClose?: () => void }) {
           >
             GitHub
           </a>
-          <span className="ab-byline-sep">·</span>
-          <a
-            className="ab-byline-link"
-            href={`https://github.com/sponsors/${ABOUT_META.githubUser}`}
-            target="_blank"
-            rel="noreferrer noopener"
-            title="GitHub Sponsors 跨境打赏通道（需 Visa/MasterCard 信用卡）"
+        </div>
+
+        {/* 支持作者：默认折叠，点击才展开双码（调研：IINA/Motrix/Obsidian 均收在关于页） */}
+        {!donateOpen ? (
+          <button
+            type="button"
+            className="ab-donate-toggle"
+            data-testid="donate-toggle"
+            onClick={() => setDonateOpen(true)}
           >
-            Sponsor
-          </a>
-        </div>
+            如果这个工具帮到了你，欢迎支持作者 <span aria-hidden="true">▸</span>
+          </button>
+        ) : (
+          <div className="ab-donate-open" data-testid="donate-open">
+            <p className="ab-pitch">
+              打赏金额随意，没有任何功能解锁。每一笔都会花在更多打磨这件小事的周末下午茶上 🍵
+            </p>
 
-        <p className="ab-pitch">
-          打赏金额随意，没有任何功能解锁。每一笔都会花在更多打磨这件小事的周末下午茶上 🍵
-        </p>
+            {/* 双码左右并排，窄屏退回上下 */}
+            <div className="ab-qr-grid">
+              <QrCard
+                platform="weixin"
+                title="微信赞赏"
+                nickname={ABOUT_META.weixinNickname}
+                src="./donate/weixin.jpg"
+                copied={copied}
+                onCopy={copyRemark}
+              />
+              <QrCard
+                platform="alipay"
+                title="支付宝"
+                nickname={ABOUT_META.alipayNickname}
+                src="./donate/alipay.jpg"
+                copied={copied}
+                onCopy={copyRemark}
+              />
+            </div>
 
-        {/* 双码左右并排，窄屏退回上下 */}
-        <div className="ab-qr-grid">
-          <QrCard
-            platform="weixin"
-            title="微信赞赏"
-            nickname={ABOUT_META.weixinNickname}
-            src="./donate/weixin.jpg"
-            copied={copied}
-            onCopy={copyRemark}
-          />
-          <QrCard
-            platform="alipay"
-            title="支付宝"
-            nickname={ABOUT_META.alipayNickname}
-            src="./donate/alipay.jpg"
-            copied={copied}
-            onCopy={copyRemark}
-          />
-        </div>
+            <div className="ab-foot-note">
+              <span>· 关于手续费：</span>
+              <span>微信赞赏码 0.38%（≤200 元）、支付宝个人收款码 0%（单笔 ≤1000 元 / 日 ≤5 万）</span>
+            </div>
 
-        <div className="ab-foot-note">
-          <span>· 关于手续费：</span>
-          <span>微信赞赏码 0.38%（≤200 元）、支付宝个人收款码 0%（单笔 ≤1000 元 / 日 ≤5 万）</span>
-        </div>
+            <div className="ab-donate-sponsor">
+              <a
+                href={`https://github.com/sponsors/${ABOUT_META.githubUser}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                title="GitHub Sponsors 跨境打赏通道（需 Visa/MasterCard 信用卡）"
+              >
+                海外用户：GitHub Sponsor ↗
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* 版本 + 检查更新：仅桌面版显示按钮；浏览器版只展示版本 */}
         <div className="ab-version-row" data-testid="ab-version">
