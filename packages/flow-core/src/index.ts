@@ -9,3 +9,4 @@ export * from './feishu';
 export * from './reflow';
 export * from './anchor';
 export * from './edgeRoute';
+export * from './nodeSize';

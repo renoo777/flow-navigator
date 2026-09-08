@@ -10,6 +10,7 @@ import type {
   ScenarioStep,
 } from './types';
 import { TALK_W_MAX, TALK_W_MIN, TALK_W_DEFAULT } from './types';
+import { flowCardSize } from './nodeSize';
 
 /** 连线 id 构造（与画布 edgeId 约定一致） */
 export const edgeIdOf = (s: string, t: string) => `${s}->${t}`;
@@ -477,7 +478,9 @@ export function buildGraph(nodeDefs: NodeDef[], edges: EdgeDef[]): { nodes: Flow
 export function estimateNodeSize(node: FlowNode, view: FlowView): { w: number; h: number } {
   const data = node.data;
   const label = data?.label ?? '';
-  const w = Math.max(140, Math.min(300, label.length * 15 + 56));
+  /* 流程视图尺寸：宽度封顶 + 长文本换行增高（与 style.css、reflow 共用 nodeSize 规则） */
+  const flow = flowCardSize(label);
+  const w = flow.w;
   if (view === 'talk') {
     const rows = (data?.talk ?? []).filter((t) => t && t.text.trim());
     /** 卡片宽度：用户拖过把手就用 talkW，否则按最长一句自动撑开（上限 TALK_W_MAX） */
@@ -506,7 +509,7 @@ export function estimateNodeSize(node: FlowNode, view: FlowView): { w: number; h
       24 + 7 + rows.length * 44 + (editWrapped - rows.length) * 18 + 28 + 19 + 30;
     return { w: cardW, h: Math.max(bubbleH, formH) };
   }
-  return { w, h: 46 };
+  return flow;
 }
 
 /** dagre 自动布局（固定 TB 纵向 + 标准间距，US-07/F5 原始设计），只重排 position，不修改节点内容 */

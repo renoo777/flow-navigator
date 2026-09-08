@@ -14,6 +14,7 @@ import {
   deriveVariableCandidates,
   estimateNodeSize,
   inferAnchorSides,
+  inferLayoutDirection,
   layeredLayout,
   layoutGraph,
   resolveVariables,
@@ -336,14 +337,22 @@ function EditorScreen() {
           selected: false,
         };
       });
-      /* 智能重排：按连线分层 + 保留左右分支顺序 + 按卡片真实尺寸拉开间距（默认） */
+      /* 智能重排：按连线分层 + 保留分支顺序 + 按卡片真实尺寸拉开间距（默认）
+         方向跟着飞书原画走：原图横着画的就按横向（LR）分层，竖着画的按纵向（TB）。
+         早期一律 TB，把横向流程图重排成一根竖柱，侧边连线全被改成上下连线。 */
+      const reflowNodes = nodes.map((n) => ({
+        id: n.id,
+        label: String(n.data.label ?? ''),
+        x: n.position.x,
+        y: n.position.y,
+      }));
+      const reflowEdges = g.edges
+        .map((e) => ({ source: remap.get(e.source) ?? '', target: remap.get(e.target) ?? '' }))
+        .filter((e) => e.source && e.target);
       if (layout === 'reflow') {
-        const pos = layeredLayout(
-          nodes.map((n) => ({ id: n.id, label: String(n.data.label ?? ''), x: n.position.x, y: n.position.y })),
-          g.edges
-            .map((e) => ({ source: remap.get(e.source) ?? '', target: remap.get(e.target) ?? '' }))
-            .filter((e) => e.source && e.target)
-        );
+        const pos = layeredLayout(reflowNodes, reflowEdges, {
+          direction: inferLayoutDirection(reflowNodes, reflowEdges),
+        });
         nodes.forEach((n) => {
           const p = pos[n.id];
           if (p) n.position = { x: p.x, y: p.y };
@@ -363,7 +372,12 @@ function EditorScreen() {
         const target = remap.get(e.target);
         if (!source || !target) return [];
         let sides: { source?: string; target?: string } | null = null;
-        if (layout === 'keep' && e.sourceSide && e.targetSide) {
+        /* 「保留原坐标」= 1:1 还原飞书：连线的出/入侧按原画锁住。
+           不锁的话画布每帧会用我们自己的卡片尺寸重算，卡片比飞书扁得多
+           （宽高比 4.7 vs 1.39），侧边连线会被判成上下，原画就白解析了。
+           锁住后挪节点不会自动换边 —— 右键连线「端点自动」可随时解除。 */
+        const pinKeep = layout === 'keep' && !!e.sourceSide && !!e.targetSide;
+        if (pinKeep) {
           sides = { source: e.sourceSide, target: e.targetSide };
         } else {
           const bs = boxes.get(source);
@@ -379,9 +393,10 @@ function EditorScreen() {
             type: edgeType,
             label: e.label,
             selected: false,
-            /* 只做「初始落位」，不打 anchorPinned —— 之后挪节点仍会自动换边 */
             sourceHandle: sides?.source,
             targetHandle: sides?.target,
+            /* 智能重排 / 未能反推出原画侧的线：只做初始落位，不打 pin，之后挪节点仍自动换边 */
+            ...(pinKeep ? { data: { anchorPinned: true } } : {}),
           } as Edge,
         ];
       });

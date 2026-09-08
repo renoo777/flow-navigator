@@ -10,6 +10,7 @@
  *  3. 按估算的卡片真实尺寸排布，层内留 hGap、层间留 vGap —— 保证不重叠。
  */
 import { findEntryNodes } from './engine';
+import { flowCardSize } from './nodeSize';
 import type { FlowEdge, FlowNode } from './types';
 
 export interface ReflowNode {
@@ -25,18 +26,23 @@ export interface ReflowEdge {
   target: string;
 }
 
+/** 布局流向：TB = 自上而下（层是横行）；LR = 自左而右（层是竖列） */
+export type ReflowDirection = 'TB' | 'LR';
+
 export interface ReflowOptions {
-  /** 层内水平间距 */
+  /** 层内间距（TB 下是水平间距，LR 下是垂直间距） */
   hGap?: number;
-  /** 层间垂直间距 */
+  /** 层间间距（TB 下是垂直间距，LR 下是水平间距） */
   vGap?: number;
   /** 整体留白 */
   pad?: number;
+  /** 布局流向，默认 TB。飞书导入时按原图主方向自动选（见 inferLayoutDirection） */
+  direction?: ReflowDirection;
 }
 
-/** 流程视图卡片尺寸估算（与 style.css / estimateNodeSize 的 flow 分支保持一致） */
+/** 流程视图卡片尺寸估算（与 style.css / estimateNodeSize 共用 nodeSize 规则） */
 function sizeOf(label: string): { w: number; h: number } {
-  return { w: Math.max(148, Math.min(300, label.length * 15 + 56)), h: 46 };
+  return flowCardSize(label);
 }
 
 /**
@@ -51,6 +57,10 @@ export function layeredLayout(
   const hGap = opts.hGap ?? 40;
   const vGap = opts.vGap ?? 90;
   const pad = opts.pad ?? 60;
+  const dir: ReflowDirection = opts.direction ?? 'TB';
+  /* 主轴 = 层内排列方向（TB 下是 x，LR 下是 y）；流向轴 = 层递增方向（TB 下是 y，LR 下是 x） */
+  const mainOf = (n: ReflowNode) => (dir === 'LR' ? n.y : n.x);
+  const flowOf = (n: ReflowNode) => (dir === 'LR' ? n.x : n.y);
   if (!nodes.length) return {};
 
   const size: Record<string, { w: number; h: number }> = {};
@@ -149,13 +159,14 @@ export function layeredLayout(
   layer.forEach((v) => (maxLayer = Math.max(maxLayer, v)));
   const leftovers = ids.filter((id) => !layer.has(id));
   if (leftovers.length) {
-    const ys = nodes.map((n) => n.y);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const span = maxY - minY || 1;
+    /* 有环残留时按「流向轴」就近分配层：TB 看 y，LR 看 x */
+    const fs = nodes.map(flowOf);
+    const minF = Math.min(...fs);
+    const maxF = Math.max(...fs);
+    const span = maxF - minF || 1;
     leftovers.forEach((id) => {
       const n = nodes.find((x) => x.id === id)!;
-      layer.set(id, Math.round(((n.y - minY) / span) * maxLayer));
+      layer.set(id, Math.round(((flowOf(n) - minF) / span) * maxLayer));
     });
   }
 
@@ -168,14 +179,16 @@ export function layeredLayout(
     byLayer.set(L, arr);
   });
 
-  const posX = new Map<string, number>();
-  nodes.forEach((n) => posX.set(n.id, n.x));
+  const posMain = new Map<string, number>();
+  nodes.forEach((n) => posMain.set(n.id, mainOf(n)));
   const order = new Map<string, number>();
   const sortedLayers = [...byLayer.keys()].sort((a, b) => a - b);
 
-  /* 初始：按原图 x */
+  /* 初始：按原图主轴坐标（TB 取 x = 左右关系，LR 取 y = 上下关系） */
   sortedLayers.forEach((L) => {
-    const arr = [...(byLayer.get(L) ?? [])].sort((a, b) => (posX.get(a) ?? 0) - (posX.get(b) ?? 0));
+    const arr = [...(byLayer.get(L) ?? [])].sort(
+      (a, b) => (posMain.get(a) ?? 0) - (posMain.get(b) ?? 0)
+    );
     arr.forEach((id, i) => order.set(id, i));
   });
 
@@ -191,13 +204,42 @@ export function layeredLayout(
     seq.forEach((L) => {
       const arr = [...(byLayer.get(L) ?? [])].sort((a, b) => {
         const d = bary(a, dir) - bary(b, dir);
-        return Math.abs(d) < 1e-6 ? (posX.get(a) ?? 0) - (posX.get(b) ?? 0) : d;
+        return Math.abs(d) < 1e-6 ? (posMain.get(a) ?? 0) - (posMain.get(b) ?? 0) : d;
       });
       arr.forEach((id, i) => order.set(id, i));
     });
   });
 
-  /* ---------- 4) 排布：层内依次排开，层整体水平居中 ---------- */
+  /* ---------- 4) 排布：层内沿主轴依次排开，层整体居中 ---------- */
+  const result: Record<string, { x: number; y: number }> = {};
+
+  if (dir === 'LR') {
+    /* 层 = 竖列（沿 x 递增），层内沿 y 排，层整体垂直居中 */
+    const colHeight: number[] = [];
+    sortedLayers.forEach((L) => {
+      const arr = [...(byLayer.get(L) ?? [])].sort(
+        (a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0)
+      );
+      byLayer.set(L, arr);
+      const h = arr.reduce((s, id) => s + size[id].h, 0) + hGap * Math.max(0, arr.length - 1);
+      colHeight.push(h);
+    });
+    const maxH = Math.max(...colHeight, 0);
+    let x = pad;
+    sortedLayers.forEach((L, li) => {
+      const arr = byLayer.get(L) ?? [];
+      const colW = Math.max(...arr.map((id) => size[id].w), 0);
+      let y = pad + (maxH - colHeight[li]) / 2;
+      arr.forEach((id) => {
+        result[id] = { x: Math.round(x + (colW - size[id].w) / 2), y: Math.round(y) };
+        y += size[id].h + hGap;
+      });
+      x += colW + vGap;
+    });
+    return result;
+  }
+
+  /* 层 = 横行（沿 y 递增），层内沿 x 排，层整体水平居中 */
   const rowWidth: number[] = [];
   sortedLayers.forEach((L) => {
     const arr = [...(byLayer.get(L) ?? [])].sort(
@@ -209,7 +251,6 @@ export function layeredLayout(
   });
   const maxW = Math.max(...rowWidth, 0);
 
-  const result: Record<string, { x: number; y: number }> = {};
   let y = pad;
   sortedLayers.forEach((L, li) => {
     const arr = byLayer.get(L) ?? [];
@@ -223,4 +264,29 @@ export function layeredLayout(
   });
 
   return result;
+}
+
+/**
+ * 按原图连线的走向判断该用哪种重排方向。
+ * 飞书画板里横着画的流程图，导入后必须继续横着排 —— 否则侧边连线会被重排成上下连线。
+ * 判据：统计每条边两端「横向位移 / 纵向位移」谁更大，多数边说了算；平局或无边时退回 TB。
+ */
+export function inferLayoutDirection(
+  nodes: ReflowNode[],
+  edges: ReflowEdge[]
+): ReflowDirection {
+  const pos = new Map(nodes.map((n) => [n.id, n]));
+  let horizontal = 0;
+  let vertical = 0;
+  edges.forEach((e) => {
+    const a = pos.get(e.source);
+    const b = pos.get(e.target);
+    if (!a || !b) return;
+    const dx = Math.abs(b.x - a.x);
+    const dy = Math.abs(b.y - a.y);
+    if (dx > dy) horizontal += 1;
+    else if (dy > dx) vertical += 1;
+  });
+  if (horizontal === 0 && vertical === 0) return 'TB';
+  return horizontal > vertical ? 'LR' : 'TB';
 }

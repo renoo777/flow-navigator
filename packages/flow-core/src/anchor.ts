@@ -83,6 +83,21 @@ export function inferAnchorSides(
   if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) {
     return { source: 'bottom', target: 'top' };
   }
+  /* 投影重叠优先：某一轴上两盒投影有重叠、另一轴没有时，方向是唯一确定的 ——
+     纵向重叠（横向流程图里节点对齐）就能水平直达，走左右侧；横向重叠就走上下。
+     这一步是给射线法打补丁：射线从盒子中心射出，卡片越扁（我们 flow 卡片宽高比
+     可达 4.7:1，而飞书原画只有 1.39），射线越容易先撞上下边，把明明能左右直连的
+     两个节点判成上下连线。投影重叠是硬几何事实，不受卡片形状影响。 */
+  const overlapY = Math.abs(dy) < (fh + th) / 2;
+  const overlapX = Math.abs(dx) < (fw + tw) / 2;
+  if (overlapY && !overlapX) {
+    const s: AnchorSide = dx >= 0 ? 'right' : 'left';
+    return { source: s, target: oppositeSide(s) };
+  }
+  if (overlapX && !overlapY) {
+    const s: AnchorSide = dy >= 0 ? 'bottom' : 'top';
+    return { source: s, target: oppositeSide(s) };
+  }
   const source = rayExitSide(dx, dy, fw / 2, fh / 2);
   const target = rayExitSide(-dx, -dy, tw / 2, th / 2);
   return { source, target };

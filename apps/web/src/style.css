@@ -538,6 +538,9 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .sop-node[data-view='flow'] {
   background: var(--n-bg, var(--k-bg, #fff));
   border: 1.2px solid var(--n-st, var(--k-st, var(--hairline-strong)));
+  /* 宽度封顶：超出就换行增高，避免长标签把卡片拉成 300+ × 46 的长条。
+     与 flow-core/src/nodeSize.ts 的 FLOW_W_MAX 保持一致，改这里请同步改那边。 */
+  max-width: 216px;
 }
 .sop-node[data-view='talk'] {
   background: var(--n-bg, #fff);
@@ -566,7 +569,14 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   font-size: 13px; font-weight: 550; line-height: 1.35; white-space: nowrap;
   color: var(--n-fg, var(--k-fg, var(--ink-1)));
 }
-.sop-sub { font-size: 10px; color: var(--ink-4); letter-spacing: 0.3px; white-space: nowrap; }
+.sop-sub { font-size: 10px; color: var(--ink-4); letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; }
+/* 流程视图：标签允许换行（配合节点 max-width），长文本变成多行而不是无限撑宽 */
+.sop-node[data-view='flow'] .sop-flow { min-width: 0; }
+.sop-node[data-view='flow'] .sop-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
 .st-dim .sop-label { opacity: 0.7; }
 
 /* 双击改名 textarea */
