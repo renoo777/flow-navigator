@@ -372,11 +372,12 @@ function EditorScreen() {
         const target = remap.get(e.target);
         if (!source || !target) return [];
         let sides: { source?: string; target?: string } | null = null;
-        /* 「保留原坐标」= 1:1 还原飞书：连线的出/入侧按原画锁住。
-           不锁的话画布每帧会用我们自己的卡片尺寸重算，卡片比飞书扁得多
-           （宽高比 4.7 vs 1.39），侧边连线会被判成上下，原画就白解析了。
+        /* 连线的出/入侧一律按飞书原画锁住（keep 与智能重排都锁）：
+           导入的是别人画好的图，第一步是把原样还原出来。不锁的话画布每帧会用
+           我们自己的卡片尺寸重算 —— 卡片 ≤216×46/53，飞书原画 106~160×73~131，
+           形状差很多，侧边连线会被判成上下，原画就白解析了。
            锁住后挪节点不会自动换边 —— 右键连线「端点自动」可随时解除。 */
-        const pinKeep = layout === 'keep' && !!e.sourceSide && !!e.targetSide;
+        const pinKeep = !!e.sourceSide && !!e.targetSide;
         if (pinKeep) {
           sides = { source: e.sourceSide, target: e.targetSide };
         } else {
@@ -395,7 +396,7 @@ function EditorScreen() {
             selected: false,
             sourceHandle: sides?.source,
             targetHandle: sides?.target,
-            /* 智能重排 / 未能反推出原画侧的线：只做初始落位，不打 pin，之后挪节点仍自动换边 */
+            /* 未能反推出原画侧的线：只做初始落位，不打 pin，之后挪节点仍自动换边 */
             ...(pinKeep ? { data: { anchorPinned: true } } : {}),
           } as Edge,
         ];

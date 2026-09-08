@@ -559,17 +559,21 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .sop-node.st-dim { opacity: 0.55; }
 .sop-node.st-pending { border-color: #e0a83e; box-shadow: 0 0 0 1.5px rgba(224, 168, 62, 0.35); }
 
-.sop-flow { display: flex; align-items: center; gap: 7px; padding: 8px 14px 8px 10px; }
+/* 结构层节点内容居中（飞书画板：图形支持水平对齐）；编辑态复用同一套布局，不跳动 */
+.sop-flow { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 14px 8px 10px; }
 .pending-dot {
   width: 7px; height: 7px; border-radius: 50%; background: #d97706; flex-shrink: 0;
   animation: pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+/* 正文常规字重：整段加粗在长文本上观感很差（层级交给颜色/边框/小标表达） */
 .sop-label {
-  font-size: 13px; font-weight: 550; line-height: 1.35; white-space: nowrap;
+  font-size: 13px; font-weight: 450; line-height: 1.35; white-space: nowrap;
+  text-align: center;
   color: var(--n-fg, var(--k-fg, var(--ink-1)));
 }
-.sop-sub { font-size: 10px; color: var(--ink-4); letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; }
+/* kind 小标保持加粗：正文降为常规后，靠小标承担层级识别 */
+.sop-sub { font-size: 10px; font-weight: 600; color: var(--ink-4); letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; }
 /* 流程视图：标签允许换行（配合节点 max-width），长文本变成多行而不是无限撑宽 */
 .sop-node[data-view='flow'] .sop-flow { min-width: 0; }
 .sop-node[data-view='flow'] .sop-label {
@@ -580,11 +584,19 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .st-dim .sop-label { opacity: 0.7; }
 
 /* 双击改名 textarea */
+/* 就地编辑层：复用 .sop-label 的全部排版（字号/字重/行高/居中/换行/限宽），
+   这里只加一圈极细高亮表示「正在编辑」。padding 用等量负 margin 抵消，
+   保证点进去的瞬间文字像素级不动 —— 编辑态与非编辑态看起来一模一样。
+   注意：绝对不要在这里写 font-weight / font-size，否则会盖掉 .sop-label 的正文规则。 */
 .node-label-editor {
-  font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-1);
-  border: 1.5px solid var(--accent); border-radius: 6px; outline: none;
-  padding: 1px 6px; background: var(--surface-1); resize: none; overflow: hidden;
-  box-shadow: 0 0 0 3px var(--ring);
+  outline: none;
+  cursor: text;
+  border-radius: 4px;
+  background: var(--surface-1);
+  color: var(--n-fg, var(--k-fg, var(--ink-1)));
+  padding: 1px 3px;
+  margin: -1px -3px;
+  box-shadow: 0 0 0 1.5px var(--accent);
 }
 
 /* 话术层卡片：宽度由节点 data.talkW 内联控制（右缘把手可拖），这里只留兜底与定位上下文 */
@@ -771,10 +783,46 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .react-flow__edge.loop-back .react-flow__edge-path { stroke-dasharray: 6 4; }
 
 /* 连线改名浮层 */
+/* 连线说明（HTML chip）：限宽换行 —— 取代 RF 的单行 SVG <text>。
+   飞书的连线说明可调背景色，这里用 surface 底板 + 细边框与连线本身区分。
+   pointer-events 由 JS 控制：未选中时穿透，避免挡住「拖线身改走向」。 */
+.edge-chip {
+  position: absolute;
+  max-width: 148px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-3);
+  cursor: text;
+}
+.edge-chip .edge-chip-text {
+  display: block;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.edge-chip .edge-chip-text[contenteditable] { outline: none; }
+.edge-chip.is-active {
+  background: var(--route-label-bg);
+  color: var(--route-label-fg);
+  border-color: transparent;
+  font-weight: 600;
+}
+.edge-chip.is-editing {
+  max-width: 200px;
+  background: var(--surface-1);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
 .edge-rename-pop { position: absolute; z-index: 20; animation: rise-in var(--t-fast) var(--ease); }
+/* 双击线身改名：多行（长说明用单行 input 根本改不动） */
 .edge-rename-input {
-  font-size: 12px; padding: 4px 8px; border: 1.5px solid var(--accent); border-radius: 8px;
-  outline: none; background: var(--surface-1); min-width: 130px;
+  font-size: 12px; line-height: 1.45; padding: 5px 8px; border: 1.5px solid var(--accent);
+  border-radius: 8px; outline: none; background: var(--surface-1);
+  min-width: 150px; max-width: 220px; min-height: 46px; resize: vertical;
   box-shadow: 0 0 0 3px var(--ring), 0 4px 16px rgba(16, 24, 40, 0.16);
 }
 
