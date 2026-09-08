@@ -15,26 +15,43 @@ export function NodeLabelEditor({
   nodeId,
   initial,
   onDone,
+  caret,
 }: {
   nodeId: string;
   initial: string;
   onDone: () => void;
+  /** 双击进入时的屏幕坐标：把光标放到这里而不是全选（只改两个字不必整段重敲） */
+  caret?: { x: number; y: number } | null;
 }) {
   const { updateNodeData } = useReactFlow<SopFlowNode>();
   const ref = useRef<HTMLSpanElement>(null);
 
   /* 只在进入编辑时灌一次初始值：之后内容由浏览器自己管，
-     不经过 React 重渲染（否则受控更新会把光标顶回开头）。 */
+     不经过 React 重渲染（否则受控更新会把光标顶回开头）。
+     光标策略：优先放到双击处（改了中间两个字就不用整段重敲），
+     双击位置落在编辑层外则退回「光标放末尾」。 */
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.textContent = initial;
     el.focus();
-    const range = document.createRange();
-    range.selectNodeContents(el);
     const sel = window.getSelection();
     sel?.removeAllRanges();
-    sel?.addRange(range);
+    let placed = false;
+    if (caret) {
+      const r = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
+        .caretRangeFromPoint?.(caret.x, caret.y);
+      if (r && el.contains(r.startContainer)) {
+        sel?.addRange(r);
+        placed = true;
+      }
+    }
+    if (!placed) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false); // 光标放末尾
+      sel?.addRange(range);
+    }
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 

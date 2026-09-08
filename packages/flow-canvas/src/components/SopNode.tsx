@@ -2,6 +2,7 @@
 import {
   useCallback,
   useRef,
+  useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
@@ -150,11 +151,14 @@ export function SopNode({ id, data, selected }: NodeProps) {
       } as CSSProperties)
     : undefined;
 
-  /** 双击进入编辑态（受控 data.editing=true；只读 view 模式锁定） */
+  /** 双击进入编辑态（受控 data.editing=true；只读 view 模式锁定）。
+   *  记录双击的屏幕坐标，交给编辑器把光标放到点击处 —— 不清空、不全选。 */
+  const [caret, setCaret] = useState<{ x: number; y: number } | null>(null);
   const startEdit = useCallback(
     (e: ReactMouseEvent) => {
       e.stopPropagation();
       if (locked || editing) return;
+      setCaret({ x: e.clientX, y: e.clientY });
       updateNodeData(id, { editing: true });
     },
     [locked, editing, id, updateNodeData]
@@ -253,7 +257,7 @@ export function SopNode({ id, data, selected }: NodeProps) {
         <div className="sop-flow" onDoubleClick={startEdit}>
           {status === 'pending' && <span className="pending-dot" title="待赋值：沿此分支继续导航" />}
           {editing ? (
-            <NodeLabelEditor nodeId={id} initial={label} onDone={endEdit} />
+            <NodeLabelEditor nodeId={id} initial={label} onDone={endEdit} caret={caret} />
           ) : (
             <span className="sop-label">{label}</span>
           )}
