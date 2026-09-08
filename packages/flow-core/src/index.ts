@@ -8,3 +8,4 @@ export * from './sample';
 export * from './feishu';
 export * from './reflow';
 export * from './anchor';
+export * from './edgeRoute';

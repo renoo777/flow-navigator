@@ -55,7 +55,8 @@ export interface FlowEdge {
   id: string;
   source: string;
   target: string;
-  type: 'step';
+  /** 视觉样式类型（smoothstep 肘线 / default 曲线 / straight 直线 / step 旧直角）。算法层不消费。 */
+  type: string;
   label: string;
 }
 
