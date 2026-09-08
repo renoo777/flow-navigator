@@ -108,6 +108,27 @@ export function isAnchorPinned(data: unknown): boolean {
   return !!(data && typeof data === 'object' && (data as { anchorPinned?: unknown }).anchorPinned);
 }
 
+/** 归一化附着锚点 position(0..1, 0..1) → 四侧。
+ * 飞书 o1 型画板剪贴板的 connectorV2.startObject/endObject.position 记录用户真实拖拽落点，
+ * 这是「连线该从哪侧出/入」的黄金真值 —— 有它时不应再走几何/图级推断。
+ * 规则与 svg 几何判侧同构（0.02/0.98 贴边阈值 + 相对中心优势轴），
+ * 与 report2fixture.side_from_pos 保持完全一致（gold 与实现同源）。 */
+export function sideFromPos(pos: unknown): AnchorSide | null {
+  if (!pos || typeof pos !== 'object') return null;
+  const p = pos as { x?: unknown; y?: unknown };
+  const x = typeof p.x === 'number' ? p.x : NaN;
+  const y = typeof p.y === 'number' ? p.y : NaN;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (y <= 0.02) return 'top';
+  if (y >= 0.98) return 'bottom';
+  if (x <= 0.02) return 'left';
+  if (x >= 0.98) return 'right';
+  const dx = x - 0.5;
+  const dy = y - 0.5;
+  if (Math.abs(dx) > Math.abs(dy)) return dx < 0 ? 'left' : 'right';
+  return dy < 0 ? 'top' : 'bottom';
+}
+
 /* ============================================================
  * 批量图级推断（飞书粘贴增强）：比单边 inferAnchorSides 多几件事
  *   1) 判断整图主流向（TB / LR），识别「远回流」边 —— 目标在源
@@ -236,7 +257,8 @@ function blockedByMiddle(
 export function inferGraphSides(
   boxById: ReadonlyMap<string, AnchorBox>,
   edges: AnchorEdgeRef[],
-  diamondIds?: ReadonlySet<string>
+  diamondIds?: ReadonlySet<string>,
+  pinned?: ReadonlyArray<{ sourceSide: AnchorSide; targetSide: AnchorSide } | undefined>
 ): InferredEdgeSide[] {
   const dir = inferGraphDirection(boxById, edges);
 
@@ -249,6 +271,9 @@ export function inferGraphSides(
   for (const e of edges) outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1);
 
   const out = edges.map((e, idx) => {
+    /* 0) 该边负载自带 position 真值（用户真实落点）→ 直接钉住，跳过一切推断/修正 */
+    const pin = pinned?.[idx];
+    if (pin) return { sourceSide: pin.sourceSide, targetSide: pin.targetSide, backflow: false };
     const a = boxById.get(e.source);
     const b = boxById.get(e.target);
     if (!a || !b) {
@@ -296,6 +321,7 @@ export function inferGraphSides(
         飞书把先画的 c2:66 放到了左缘、后画的 c2:70 保持直下。 */
   const srcCount = new Map<string, Map<AnchorSide, number>>();
   out.forEach((o, i) => {
+    if (pinned?.[i]) return;
     if (o.backflow) return;
     const side = o.sourceSide;
     if (side !== 'top' && side !== 'bottom') return;
@@ -306,6 +332,7 @@ export function inferGraphSides(
   const srcShifted = new Set<string>();
   for (let i = 0; i < out.length; i += 1) {
     const e = edges[i];
+    if (pinned?.[i]) continue;
     if (out[i].backflow) continue;
     const side = out[i].sourceSide;
     if (side !== 'top' && side !== 'bottom') continue;
@@ -329,6 +356,7 @@ export function inferGraphSides(
   const usedIn = new Map<string, Set<AnchorSide>>();
   for (let i = 0; i < out.length; i += 1) {
     const e = edges[i];
+    if (pinned?.[i]) continue;
     if (out[i].backflow) continue;
     const side = out[i].targetSide;
     if (side === 'top' || side === 'bottom') {

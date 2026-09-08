@@ -29,7 +29,7 @@
  * ## 文本
  * 文本在 `info.textV2.text`（URL 编码，`\n` 分行）；我们卡片是单行 nowrap，故换行折叠为空格。
  */
-import { inferGraphSides, type AnchorEdgeRef } from './anchor';
+import { inferGraphSides, sideFromPos, type AnchorEdgeRef } from './anchor';
 import type { AnchorSide } from './anchor';
 import type { NodeKind } from './types';
 
@@ -260,6 +260,9 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
   const outLabels = new Map<string, string[]>(); // 本地 id → 出边文字
   const edgeRefs: AnchorEdgeRef[] = [];
   const rawEdgeMeta: { source: string; target: string; label: string }[] = [];
+  /** o1 型负载自带的 position 真值（用户真实落点）→ 对应边直接钉住侧，
+   *  不再走几何/图级推断。o2 型无 position → undefined，维持推断。 */
+  const pins: ({ sourceSide: AnchorSide; targetSide: AnchorSide } | undefined)[] = [];
   const pairCount = new Map<string, number>();
   let labeled = 0;
   let parallel = 0;
@@ -291,6 +294,11 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
       arr.push(label);
       outLabels.set(source, arr);
     }
+    /* o1 型真实负载自带 startObject/endObject.position（归一化附着点）：
+       它是用户在飞书里手动拖出的真实落点 = 方向黄金真值。两端都有才钉。 */
+    const pinS = sideFromPos(asRecord(conn.startObject).position);
+    const pinT = sideFromPos(asRecord(conn.endObject).position);
+    pins.push(pinS && pinT ? { sourceSide: pinS, targetSide: pinT } : undefined);
     edgeRefs.push({ source, target, label });
     rawEdgeMeta.push({ source, target, label });
   });
@@ -300,7 +308,7 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
      图级推断拿整图上下文后把这三类修掉 —— 用 37 边真实样本验证 32/37 全一致，
      剩下 5 条是左右镜像弧 / 菱形端点微差（视觉不再穿节点、叠主链）。 */
   const diamondIdSet = new Set(raws.filter((r) => r.diamond).map((r) => r.id));
-  const sides = inferGraphSides(rawBoxById, edgeRefs, diamondIdSet);
+  const sides = inferGraphSides(rawBoxById, edgeRefs, diamondIdSet, pins);
   const edges: ImportedEdge[] = rawEdgeMeta.map((m, i) => {
     const si = sides[i];
     return {

@@ -1,0 +1,1870 @@
+{
+ "provenance": "clipboard-report:report51_payload.json",
+ "nodes": [
+  {
+   "id": "o1:57",
+   "text": "加盖收讫/付讫章 登记日记账",
+   "shape": "rect",
+   "bbox": [
+    -577.6934478995018,
+    921.8908545017165,
+    138.06738,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:56",
+   "text": "出纳付款/收款 现金/银行操作",
+   "shape": "rect",
+   "bbox": [
+    -570.6934478995018,
+    789.3468545017164,
+    124.06738,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:55",
+   "text": "凭证分类整理 粘贴归档",
+   "shape": "rect",
+   "bbox": [
+    -568.6597478995018,
+    656.8028545017164,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:54",
+   "text": "原始凭证 完整性审核",
+   "shape": "diamond",
+   "bbox": [
+    -820.1597478995018,
+    448.88285450171645,
+    160,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:53",
+   "text": "原始凭证 合法性审核",
+   "shape": "diamond",
+   "bbox": [
+    -898.1597478995018,
+    240.96285450171646,
+    160,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:52",
+   "text": "退回重办 或补充说明",
+   "shape": "rect",
+   "bbox": [
+    -902.1597478995018,
+    656.8028545017164,
+    106,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:51",
+   "text": "原始凭证 真实性审核",
+   "shape": "diamond",
+   "bbox": [
+    -838.1597478995018,
+    33.04285450171645,
+    160,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:50",
+   "text": "业务发生 获取原始凭证",
+   "shape": "rect",
+   "bbox": [
+    -818.1597478995018,
+    -99.50114549828355,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:49",
+   "text": "退回修改 重新填制",
+   "shape": "rect",
+   "bbox": [
+    -530.1062778995018,
+    2170.658854501716,
+    92,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:48",
+   "text": "审核通过 记账凭证生效",
+   "shape": "rect",
+   "bbox": [
+    -743.5528178995019,
+    2170.658854501716,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:47",
+   "text": "附件张数 是否相符?",
+   "shape": "diamond",
+   "bbox": [
+    -720.4458778995019,
+    1962.738854501716,
+    153.78613,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:46",
+   "text": "借贷金额 是否平衡?",
+   "shape": "diamond",
+   "bbox": [
+    -643.9993478995018,
+    1754.8188545017165,
+    153.78613,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:45",
+   "text": "科目使用 是否正确?",
+   "shape": "diamond",
+   "bbox": [
+    -585.5528178995019,
+    1546.8988545017166,
+    153.78613,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:44",
+   "text": "出纳签字确认",
+   "shape": "rect",
+   "bbox": [
+    -743.5528178995019,
+    1434.6268545017165,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:43",
+   "text": "涉及现金/银行?",
+   "shape": "diamond",
+   "bbox": [
+    -601.5865078995018,
+    1246.9788545017166,
+    185.85352,
+    110.272
+   ]
+  },
+  {
+   "id": "o1:42",
+   "text": "会计人员填制 记账凭证",
+   "shape": "rect",
+   "bbox": [
+    -568.6597478995018,
+    1114.4348545017165,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:41",
+   "text": "登记备查账簿",
+   "shape": "rect",
+   "bbox": [
+    -743.5528178995019,
+    3118.6748545017163,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:40",
+   "text": "根据科目汇总表 登记总分类账",
+   "shape": "rect",
+   "bbox": [
+    -750.5528178995019,
+    2986.1308545017164,
+    134,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:39",
+   "text": "科目汇总表 试算平衡?",
+   "shape": "diamond",
+   "bbox": [
+    -763.5528178995019,
+    2778.2108545017163,
+    160,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:38",
+   "text": "定期汇总 编制科目汇总表",
+   "shape": "rect",
+   "bbox": [
+    -750.5528178995019,
+    2628.2908545017162,
+    134,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:37",
+   "text": "登记辅助账簿 如往来/存货/固定资产",
+   "shape": "rect",
+   "bbox": [
+    -768.6201978995018,
+    2495.7468545017164,
+    170.13477,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:36",
+   "text": "根据记账凭证 登记明细账",
+   "shape": "rect",
+   "bbox": [
+    -743.5528178995019,
+    2363.2028545017165,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:35",
+   "text": "期末结账 封账处理",
+   "shape": "rect",
+   "bbox": [
+    -627.5528178995019,
+    4691.762854501716,
+    92,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:34",
+   "text": "结转本年利润 利润分配",
+   "shape": "rect",
+   "bbox": [
+    -641.5528178995019,
+    4559.218854501716,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:33",
+   "text": "计算所得税 计提应交税费",
+   "shape": "rect",
+   "bbox": [
+    -641.5528178995019,
+    4426.674854501716,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:32",
+   "text": "结转损益 收入成本费用结转",
+   "shape": "rect",
+   "bbox": [
+    -655.5528178995019,
+    4294.1308545017155,
+    148,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:31",
+   "text": "计提折旧/摊销 减值准备",
+   "shape": "rect",
+   "bbox": [
+    -643.5865078995018,
+    4161.586854501716,
+    124.06738,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:30",
+   "text": "查找差异 调整账务处理",
+   "shape": "rect",
+   "bbox": [
+    -919.0528178995019,
+    4161.586854501716,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:29",
+   "text": "对账是否 全部相符?",
+   "shape": "diamond",
+   "bbox": [
+    -707.4458778995019,
+    3953.666854501717,
+    153.78613,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:28",
+   "text": "往来款项核对 发函询证",
+   "shape": "rect",
+   "bbox": [
+    -690.5528178995019,
+    3821.122854501716,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:27",
+   "text": "银行对账 编制银行存款余额调节表",
+   "shape": "rect",
+   "bbox": [
+    -725.5528178995019,
+    3688.5788545017163,
+    190,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:26",
+   "text": "账实核对 现金/存货/固定资产盘点",
+   "shape": "rect",
+   "bbox": [
+    -722.6201978995018,
+    3556.0348545017164,
+    184.13477,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:25",
+   "text": "账账核对 总账与明细账核对",
+   "shape": "rect",
+   "bbox": [
+    -704.5528178995019,
+    3423.4908545017165,
+    148,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:24",
+   "text": "账证核对 账簿与凭证核对",
+   "shape": "rect",
+   "bbox": [
+    -750.5528178995019,
+    3290.946854501716,
+    134,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:23",
+   "text": "正式对外报送",
+   "shape": "rect",
+   "bbox": [
+    -356.55281789950175,
+    6055.826854501716,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:22",
+   "text": "单位负责人审批",
+   "shape": "rect",
+   "bbox": [
+    -363.55281789950175,
+    5896.178854501716,
+    134,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:21",
+   "text": "财务负责人审核",
+   "shape": "rect",
+   "bbox": [
+    -310.05281789950175,
+    5756.394854501716,
+    134,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:20",
+   "text": "报表勾稽关系 是否正确?",
+   "shape": "diamond",
+   "bbox": [
+    -248.05281789950175,
+    5538.338854501716,
+    174,
+    130.544
+   ]
+  },
+  {
+   "id": "o1:19",
+   "text": "编制财务报表附注",
+   "shape": "rect",
+   "bbox": [
+    -235.05281789950175,
+    5415.930854501716,
+    148,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:18",
+   "text": "编制所有者权益变动表",
+   "shape": "rect",
+   "bbox": [
+    -249.05281789950175,
+    5276.146854501716,
+    176,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:17",
+   "text": "编制现金流量表",
+   "shape": "rect",
+   "bbox": [
+    -228.05281789950175,
+    5146.498854501716,
+    134,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:16",
+   "text": "编制利润表",
+   "shape": "rect",
+   "bbox": [
+    -214.05281789950175,
+    5016.850854501716,
+    106,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:15",
+   "text": "编制资产负债表",
+   "shape": "rect",
+   "bbox": [
+    -410.05281789950175,
+    4894.442854501716,
+    134,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:14",
+   "text": "税务档案归档",
+   "shape": "rect",
+   "bbox": [
+    -796.5528178995019,
+    5896.178854501716,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:13",
+   "text": "取得完税凭证 账务处理",
+   "shape": "rect",
+   "bbox": [
+    -796.5528178995019,
+    5746.258854501716,
+    120,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:12",
+   "text": "缴纳税款 银行扣款",
+   "shape": "rect",
+   "bbox": [
+    -782.5528178995019,
+    5567.338854501716,
+    92,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:11",
+   "text": "网上申报 或大厅申报",
+   "shape": "rect",
+   "bbox": [
+    -789.5528178995019,
+    5405.794854501716,
+    106,
+    72.544
+   ]
+  },
+  {
+   "id": "o1:10",
+   "text": "财务负责人审批",
+   "shape": "rect",
+   "bbox": [
+    -803.5528178995019,
+    5276.146854501716,
+    134,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:9",
+   "text": "税务会计审核",
+   "shape": "rect",
+   "bbox": [
+    -746.5528178995019,
+    5146.498854501716,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:8",
+   "text": "填制纳税申报表",
+   "shape": "rect",
+   "bbox": [
+    -682.0528178995019,
+    5016.850854501716,
+    134,
+    52.272
+   ]
+  },
+  {
+   "id": "o1:7",
+   "text": "计算各项税费 增值税/企业所得税等",
+   "shape": "rect",
+   "bbox": [
+    -855.5865078995018,
+    4884.306854501716,
+    166.06738,
+    72.544
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "c1:1",
+   "label": "",
+   "fromNode": "o1:50",
+   "toNode": "o1:51",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.0076602525
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:2",
+   "label": "不通过",
+   "fromNode": "o1:51",
+   "toNode": "o1:52",
+   "fromSide": "right",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.75996876,
+     "y": 0.740034
+    },
+    "e": {
+     "x": 0.9910377,
+     "y": 0.26513565
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:3",
+   "label": "通过",
+   "fromNode": "o1:51",
+   "toNode": "o1:53",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.33993125,
+     "y": 0.83993137
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.0076602525
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:4",
+   "label": "不通过",
+   "fromNode": "o1:53",
+   "toNode": "o1:52",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.31014374,
+     "y": 0.81014067
+    },
+    "e": {
+     "x": 0.29046226,
+     "y": 0.011675673
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:5",
+   "label": "通过",
+   "fromNode": "o1:53",
+   "toNode": "o1:54",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.68985623,
+     "y": 0.81014067
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.0076602525
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:6",
+   "label": "不通过",
+   "fromNode": "o1:54",
+   "toNode": "o1:52",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.1877,
+     "y": 0.68769914
+    },
+    "e": {
+     "x": 0.037433963,
+     "y": 0.008105426
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:7",
+   "label": "通过",
+   "fromNode": "o1:54",
+   "toNode": "o1:55",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.8225,
+     "y": 0.67750335
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:8",
+   "label": "",
+   "fromNode": "o1:55",
+   "toNode": "o1:56",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:9",
+   "label": "",
+   "fromNode": "o1:56",
+   "toNode": "o1:57",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:10",
+   "label": "",
+   "fromNode": "o1:57",
+   "toNode": "o1:42",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:11",
+   "label": "",
+   "fromNode": "o1:42",
+   "toNode": "o1:43",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.009068485
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:12",
+   "label": "是",
+   "fromNode": "o1:43",
+   "toNode": "o1:44",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.23741686,
+     "y": 0.737422
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:13",
+   "label": "否",
+   "fromNode": "o1:43",
+   "toNode": "o1:45",
+   "fromSide": "bottom",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.73390466,
+     "y": 0.76609653
+    },
+    "e": {
+     "x": 0.77127284,
+     "y": 0.28096274
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:14",
+   "label": "",
+   "fromNode": "o1:44",
+   "toNode": "o1:45",
+   "fromSide": "bottom",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.20115641,
+     "y": 0.3082179
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:15",
+   "label": "错误",
+   "fromNode": "o1:45",
+   "toNode": "o1:49",
+   "fromSide": "right",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.76308614,
+     "y": 0.7369163
+    },
+    "e": {
+     "x": 0.9909841,
+     "y": 0.081192106
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:16",
+   "label": "正确",
+   "fromNode": "o1:45",
+   "toNode": "o1:46",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.3384705,
+     "y": 0.83846825
+    },
+    "e": {
+     "x": 0.49999696,
+     "y": 0.0076602525
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:17",
+   "label": "不平衡",
+   "fromNode": "o1:46",
+   "toNode": "o1:49",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.7343029,
+     "y": 0.76569587
+    },
+    "e": {
+     "x": 0.62804925,
+     "y": 0.013081716
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:18",
+   "label": "平衡",
+   "fromNode": "o1:46",
+   "toNode": "o1:47",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.3078405,
+     "y": 0.80784255
+    },
+    "e": {
+     "x": 0.5000004,
+     "y": 0.0076602525
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:19",
+   "label": "不符",
+   "fromNode": "o1:47",
+   "toNode": "o1:49",
+   "fromSide": "bottom",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.6549884,
+     "y": 0.8450101
+    },
+    "e": {
+     "x": 0.008831883,
+     "y": 0.052878253
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:20",
+   "label": "相符",
+   "fromNode": "o1:47",
+   "toNode": "o1:48",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.3769009,
+     "y": 0.8768997
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:21",
+   "label": "",
+   "fromNode": "o1:48",
+   "toNode": "o1:36",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:22",
+   "label": "",
+   "fromNode": "o1:36",
+   "toNode": "o1:37",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000004,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:23",
+   "label": "",
+   "fromNode": "o1:37",
+   "toNode": "o1:38",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000004,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:24",
+   "label": "",
+   "fromNode": "o1:38",
+   "toNode": "o1:39",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.63734376,
+     "y": 1
+    },
+    "e": {
+     "x": 0.61279416,
+     "y": 0.122135065
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:25",
+   "label": "不平衡",
+   "fromNode": "o1:39",
+   "toNode": "o1:38",
+   "fromSide": "top",
+   "toSide": "bottom",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.36105666,
+     "y": 0.13894166
+    },
+    "e": {
+     "x": 0.32702288,
+     "y": 0.98846215
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:26",
+   "label": "平衡",
+   "fromNode": "o1:39",
+   "toNode": "o1:40",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000004,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:27",
+   "label": "",
+   "fromNode": "o1:40",
+   "toNode": "o1:41",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:28",
+   "label": "",
+   "fromNode": "o1:41",
+   "toNode": "o1:24",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:29",
+   "label": "",
+   "fromNode": "o1:24",
+   "toNode": "o1:25",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.7164781,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:30",
+   "label": "",
+   "fromNode": "o1:25",
+   "toNode": "o1:26",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000036,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:31",
+   "label": "",
+   "fromNode": "o1:26",
+   "toNode": "o1:27",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000036,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000036,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:32",
+   "label": "",
+   "fromNode": "o1:27",
+   "toNode": "o1:28",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000036,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:33",
+   "label": "",
+   "fromNode": "o1:28",
+   "toNode": "o1:29",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000004,
+     "y": 0.0076602525
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:34",
+   "label": "不相符",
+   "fromNode": "o1:29",
+   "toNode": "o1:30",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.21602164,
+     "y": 0.7160191
+    },
+    "e": {
+     "x": 0.7666089,
+     "y": 0.01024206
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:35",
+   "label": "",
+   "fromNode": "o1:30",
+   "toNode": "o1:24",
+   "fromSide": "top",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.33870888,
+     "y": 0
+    },
+    "e": {
+     "x": 0.007134824,
+     "y": 0.779968
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:36",
+   "label": "全部相符",
+   "fromNode": "o1:29",
+   "toNode": "o1:31",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.6428807,
+     "y": 0.8571133
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:37",
+   "label": "",
+   "fromNode": "o1:31",
+   "toNode": "o1:32",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:38",
+   "label": "",
+   "fromNode": "o1:32",
+   "toNode": "o1:33",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:39",
+   "label": "",
+   "fromNode": "o1:33",
+   "toNode": "o1:34",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:40",
+   "label": "",
+   "fromNode": "o1:34",
+   "toNode": "o1:35",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000007,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:41",
+   "label": "",
+   "fromNode": "o1:35",
+   "toNode": "o1:15",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.6761965
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:42",
+   "label": "",
+   "fromNode": "o1:15",
+   "toNode": "o1:16",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.9667317
+    },
+    "e": {
+     "x": 0.50000066,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:43",
+   "label": "",
+   "fromNode": "o1:16",
+   "toNode": "o1:17",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000066,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:44",
+   "label": "",
+   "fromNode": "o1:17",
+   "toNode": "o1:18",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000036,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:45",
+   "label": "",
+   "fromNode": "o1:18",
+   "toNode": "o1:19",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000036,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:46",
+   "label": "",
+   "fromNode": "o1:19",
+   "toNode": "o1:20",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000036,
+     "y": 0.0076602525
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:47",
+   "label": "不正确",
+   "fromNode": "o1:20",
+   "toNode": "o1:21",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.61841416,
+     "y": 0.8815878
+    },
+    "e": {
+     "x": 0.81885123,
+     "y": 0.00983318
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:48",
+   "label": "正确",
+   "fromNode": "o1:20",
+   "toNode": "o1:21",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.3542705,
+     "y": 0.85427135
+    },
+    "e": {
+     "x": 0.56268704,
+     "y": 0.018155035
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:49",
+   "label": "审核通过",
+   "fromNode": "o1:21",
+   "toNode": "o1:22",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.65622437,
+     "y": 0.01474977
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:62",
+   "label": "",
+   "fromNode": "o1:13",
+   "toNode": "o1:14",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:50",
+   "label": "需修改",
+   "fromNode": "o1:21",
+   "toNode": "o1:15",
+   "fromSide": "top",
+   "toSide": "bottom",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.28663483,
+     "y": 1.7399271e-14
+    },
+    "e": {
+     "x": 0.5510229,
+     "y": 0.9815389
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:61",
+   "label": "",
+   "fromNode": "o1:12",
+   "toNode": "o1:13",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000007,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:51",
+   "label": "审批通过",
+   "fromNode": "o1:22",
+   "toNode": "o1:23",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000054,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:60",
+   "label": "",
+   "fromNode": "o1:11",
+   "toNode": "o1:12",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000066,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5000007,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:52",
+   "label": "需修改",
+   "fromNode": "o1:22",
+   "toNode": "o1:15",
+   "fromSide": "top",
+   "toSide": "bottom",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.16903035,
+     "y": 1.7399271e-14
+    },
+    "e": {
+     "x": 0.3182766,
+     "y": 0.98618764
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:59",
+   "label": "不通过",
+   "fromNode": "o1:10",
+   "toNode": "o1:7",
+   "fromSide": "top",
+   "toSide": "bottom",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.18402289,
+     "y": 1.7399271e-14
+    },
+    "e": {
+     "x": 0.27688012,
+     "y": 0.99044716
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:53",
+   "label": "",
+   "fromNode": "o1:35",
+   "toNode": "o1:7",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 7.2180706e-07,
+     "y": 0.7200182
+    },
+    "e": {
+     "x": 0.5000004,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:58",
+   "label": "审批通过",
+   "fromNode": "o1:10",
+   "toNode": "o1:11",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.50000066,
+     "y": 0.013784737
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:54",
+   "label": "",
+   "fromNode": "o1:7",
+   "toNode": "o1:8",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.98161113
+    },
+    "e": {
+     "x": 0.5000005,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:57",
+   "label": "不通过",
+   "fromNode": "o1:9",
+   "toNode": "o1:7",
+   "fromSide": "top",
+   "toSide": "bottom",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.25976723,
+     "y": 1.7399271e-14
+    },
+    "e": {
+     "x": 0.5464996,
+     "y": 0.98653233
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:55",
+   "label": "",
+   "fromNode": "o1:8",
+   "toNode": "o1:9",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5000005,
+     "y": 1
+    },
+    "e": {
+     "x": 0.73405886,
+     "y": 0.012855831
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c1:56",
+   "label": "通过",
+   "fromNode": "o1:9",
+   "toNode": "o1:10",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.50000054,
+     "y": 1
+    },
+    "e": {
+     "x": 0.6458811,
+     "y": 0.015151516
+    }
+   },
+   "dangling": false
+  }
+ ]
+}
