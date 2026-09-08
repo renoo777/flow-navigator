@@ -1,0 +1,1870 @@
+{
+ "provenance": "clipboard-report:ecom_paste_payload.json",
+ "nodes": [
+  {
+   "id": "o2:52",
+   "text": "并行处理",
+   "shape": "rect",
+   "bbox": [
+    1645.265148933615,
+    236.32629245326052,
+    200,
+    336.816
+   ]
+  },
+  {
+   "id": "o2:53",
+   "text": "结算分账",
+   "shape": "rect",
+   "bbox": [
+    1699.265148933615,
+    266.3262924532605,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:54",
+   "text": "更新用户积分",
+   "shape": "rect",
+   "bbox": [
+    1685.265148933615,
+    378.59829245326046,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:55",
+   "text": "推送物流信息",
+   "shape": "rect",
+   "bbox": [
+    1685.265148933615,
+    490.8702924532604,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:56",
+   "text": "用户提交订单",
+   "shape": "rect",
+   "bbox": [
+    2156.507578933615,
+    -2143.676125800443,
+    120,
+    63.18941821005098
+   ]
+  },
+  {
+   "id": "o2:57",
+   "text": "库存检查",
+   "shape": "diamond",
+   "bbox": [
+    2143.507578933615,
+    -2031.2290190695485,
+    146,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:58",
+   "text": "锁定库存",
+   "shape": "rect",
+   "bbox": [
+    1880.712148933615,
+    -1300.1697075467396,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:59",
+   "text": "通知用户缺货",
+   "shape": "rect",
+   "bbox": [
+    2236.007578933615,
+    -1824.6337075467395,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:60",
+   "text": "用户选择",
+   "shape": "diamond",
+   "bbox": [
+    2223.007578933615,
+    -1712.3617075467396,
+    146,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:61",
+   "text": "加入缺货清单",
+   "shape": "rect",
+   "bbox": [
+    2129.507578933615,
+    -1524.7137075467394,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:62",
+   "text": "订单关闭",
+   "shape": "rect",
+   "bbox": [
+    2250.007548933615,
+    -146.8657075467395,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:63",
+   "text": "补货到库",
+   "shape": "rect",
+   "bbox": [
+    2143.507578933615,
+    -1412.4417075467395,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:64",
+   "text": "生成订单记录",
+   "shape": "rect",
+   "bbox": [
+    1866.712148933615,
+    -1187.8977075467396,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:65",
+   "text": "支付方式",
+   "shape": "diamond",
+   "bbox": [
+    1853.712148933615,
+    -1075.6257075467397,
+    146,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:66",
+   "text": "调用微信支付接口",
+   "shape": "rect",
+   "bbox": [
+    1565.712168933615,
+    -887.9777075467396,
+    148,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:67",
+   "text": "调用支付宝接口",
+   "shape": "rect",
+   "bbox": [
+    1854.609873933615,
+    -905.3537075467397,
+    134,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:68",
+   "text": "调用银行网关",
+   "shape": "rect",
+   "bbox": [
+    2129.507578933615,
+    -887.9777075467396,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:69",
+   "text": "支付结果",
+   "shape": "diamond",
+   "bbox": [
+    1846.712148933615,
+    -775.7057075467396,
+    146,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:70",
+   "text": "更新订单状态: 已支付",
+   "shape": "rect",
+   "bbox": [
+    1490.212168933615,
+    -559.0577075467395,
+    170.60645,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:71",
+   "text": "重试次数 < 3?",
+   "shape": "diamond",
+   "bbox": [
+    1830.1213489336149,
+    -588.0577075467395,
+    179.18164,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:72",
+   "text": "提示用户重新支付",
+   "shape": "rect",
+   "bbox": [
+    1887.4239821917508,
+    -380.9314959564374,
+    148,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:73",
+   "text": "订单自动取消",
+   "shape": "rect",
+   "bbox": [
+    2136.007578933615,
+    -400.4097075467396,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:74",
+   "text": "释放库存",
+   "shape": "rect",
+   "bbox": [
+    2150.007578933615,
+    -288.13770754673965,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:75",
+   "text": "发送支付成功通知",
+   "shape": "rect",
+   "bbox": [
+    1370.212168933615,
+    -400.4097075467396,
+    148,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:76",
+   "text": "订单分派",
+   "shape": "rect",
+   "bbox": [
+    1398.212168933615,
+    -288.13770754673965,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:77",
+   "text": "配送方式",
+   "shape": "diamond",
+   "bbox": [
+    1371.212168933615,
+    -175.8657075467395,
+    146,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:78",
+   "text": "对接物流系统",
+   "shape": "rect",
+   "bbox": [
+    1214.265148933615,
+    11.782292453260197,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:79",
+   "text": "匹配骑手",
+   "shape": "rect",
+   "bbox": [
+    1387.265148933615,
+    124.05429245326059,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:80",
+   "text": "生成提货码",
+   "shape": "rect",
+   "bbox": [
+    1539.265148933615,
+    124.05429245326059,
+    106,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:81",
+   "text": "打印快递单",
+   "shape": "rect",
+   "bbox": [
+    1221.265148933615,
+    124.05429245326059,
+    106,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:82",
+   "text": "拣货作业",
+   "shape": "rect",
+   "bbox": [
+    1387.265148933615,
+    266.3262924532605,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:83",
+   "text": "打包",
+   "shape": "rect",
+   "bbox": [
+    1401.265148933615,
+    378.59829245326046,
+    64,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:84",
+   "text": "出库扫描",
+   "shape": "rect",
+   "bbox": [
+    1387.265148933615,
+    490.8702924532604,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:85",
+   "text": "交接物流",
+   "shape": "rect",
+   "bbox": [
+    1537.712168933615,
+    633.1422924532603,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:86",
+   "text": "物流状态追踪",
+   "shape": "diamond",
+   "bbox": [
+    1496.712168933615,
+    745.4142924532603,
+    174,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:87",
+   "text": "更新物流节点",
+   "shape": "rect",
+   "bbox": [
+    1412.712168933615,
+    933.0622924532604,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:88",
+   "text": "确认收货",
+   "shape": "rect",
+   "bbox": [
+    1601.061048933615,
+    985.3342924532604,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:89",
+   "text": "用户是否满意?",
+   "shape": "diamond",
+   "bbox": [
+    1556.167983933615,
+    1114.9822924532602,
+    181.78613,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:90",
+   "text": "自动好评",
+   "shape": "rect",
+   "bbox": [
+    1509.061048933615,
+    2074.7422924532607,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:91",
+   "text": "售后入口",
+   "shape": "rect",
+   "bbox": [
+    1831.007578933615,
+    1232.9822924532605,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:92",
+   "text": "售后类型",
+   "shape": "diamond",
+   "bbox": [
+    1804.007578933615,
+    1345.2542924532604,
+    146,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:93",
+   "text": "退货审核",
+   "shape": "rect",
+   "bbox": [
+    1715.007578933615,
+    1532.9022924532605,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:94",
+   "text": "退款审核",
+   "shape": "rect",
+   "bbox": [
+    1947.007578933615,
+    1803.8222924532606,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:95",
+   "text": "换货处理",
+   "shape": "rect",
+   "bbox": [
+    2033.007578933615,
+    1962.4702924532603,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:96",
+   "text": "质检确认",
+   "shape": "rect",
+   "bbox": [
+    1715.007578933615,
+    1662.5502924532602,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:97",
+   "text": "商品完好?",
+   "shape": "diamond",
+   "bbox": [
+    1684.114513933615,
+    1783.5102924532603,
+    153.78613,
+    110.272
+   ]
+  },
+  {
+   "id": "o2:98",
+   "text": "退款处理",
+   "shape": "rect",
+   "bbox": [
+    1675.061048933615,
+    1962.4702924532603,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:99",
+   "text": "拒绝退款",
+   "shape": "rect",
+   "bbox": [
+    1841.061048933615,
+    2074.7422924532607,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:100",
+   "text": "资金原路返回",
+   "shape": "rect",
+   "bbox": [
+    1661.061048933615,
+    2074.7422924532607,
+    120,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:101",
+   "text": "订单完结",
+   "shape": "rect",
+   "bbox": [
+    1632.007578933615,
+    2187.0142924532606,
+    92,
+    52.272
+   ]
+  },
+  {
+   "id": "o2:102",
+   "text": "重新发货",
+   "shape": "rect",
+   "bbox": [
+    2033.007578933615,
+    2074.7422924532607,
+    92,
+    52.272
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "id": "c2:121",
+   "label": "",
+   "fromNode": "o2:53",
+   "toNode": "o2:54",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:65",
+   "label": "",
+   "fromNode": "o2:59",
+   "toNode": "o2:60",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.4999964,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999705,
+     "y": 0.009068485
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:67",
+   "label": "取消订单",
+   "fromNode": "o2:60",
+   "toNode": "o2:62",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.49999705,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999532,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:68",
+   "label": "",
+   "fromNode": "o2:61",
+   "toNode": "o2:63",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.4999964,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999532,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:70",
+   "label": "",
+   "fromNode": "o2:58",
+   "toNode": "o2:64",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.49999976,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999982,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:71",
+   "label": "",
+   "fromNode": "o2:64",
+   "toNode": "o2:65",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999985,
+     "y": 0.009068485
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:79",
+   "label": "支付失败",
+   "fromNode": "o2:69",
+   "toNode": "o2:71",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.49999985,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999988,
+     "y": 0.009068485
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:83",
+   "label": "",
+   "fromNode": "o2:73",
+   "toNode": "o2:74",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.4999964,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999532,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:86",
+   "label": "",
+   "fromNode": "o2:75",
+   "toNode": "o2:76",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.49999985,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999976,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:87",
+   "label": "",
+   "fromNode": "o2:76",
+   "toNode": "o2:77",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.49999976,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999985,
+     "y": 0.009068485
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:91",
+   "label": "",
+   "fromNode": "o2:78",
+   "toNode": "o2:81",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:93",
+   "label": "",
+   "fromNode": "o2:79",
+   "toNode": "o2:82",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:95",
+   "label": "",
+   "fromNode": "o2:82",
+   "toNode": "o2:83",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:96",
+   "label": "",
+   "fromNode": "o2:83",
+   "toNode": "o2:84",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0.019130701
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:98",
+   "label": "",
+   "fromNode": "o2:85",
+   "toNode": "o2:86",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.49999976,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999988,
+     "y": 0.009068485
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:105",
+   "label": "",
+   "fromNode": "o2:91",
+   "toNode": "o2:92",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.49999532,
+     "y": 1
+    },
+    "e": {
+     "x": 0.49999705,
+     "y": 0.009068485
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:125",
+   "label": "库存充足",
+   "fromNode": "o2:57",
+   "toNode": "o2:58",
+   "fromSide": "left",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:126",
+   "label": "库存不足",
+   "fromNode": "o2:57",
+   "toNode": "o2:59",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:127",
+   "label": "等待补货",
+   "fromNode": "o2:60",
+   "toNode": "o2:61",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:128",
+   "label": "",
+   "fromNode": "o2:63",
+   "toNode": "o2:58",
+   "fromSide": "bottom",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:129",
+   "label": "微信支付",
+   "fromNode": "o2:65",
+   "toNode": "o2:66",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:130",
+   "label": "银行卡",
+   "fromNode": "o2:65",
+   "toNode": "o2:68",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:131",
+   "label": "支付宝",
+   "fromNode": "o2:65",
+   "toNode": "o2:67",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:132",
+   "label": "",
+   "fromNode": "o2:66",
+   "toNode": "o2:69",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:133",
+   "label": "",
+   "fromNode": "o2:67",
+   "toNode": "o2:69",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:134",
+   "label": "",
+   "fromNode": "o2:68",
+   "toNode": "o2:69",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:135",
+   "label": "",
+   "fromNode": "o2:72",
+   "toNode": "o2:69",
+   "fromSide": "right",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:136",
+   "label": "支付成功",
+   "fromNode": "o2:69",
+   "toNode": "o2:70",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:137",
+   "label": "是",
+   "fromNode": "o2:71",
+   "toNode": "o2:72",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:138",
+   "label": "否",
+   "fromNode": "o2:71",
+   "toNode": "o2:73",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:139",
+   "label": "",
+   "fromNode": "o2:74",
+   "toNode": "o2:62",
+   "fromSide": "bottom",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:140",
+   "label": "",
+   "fromNode": "o2:70",
+   "toNode": "o2:53",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:141",
+   "label": "",
+   "fromNode": "o2:70",
+   "toNode": "o2:75",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:142",
+   "label": "快递",
+   "fromNode": "o2:77",
+   "toNode": "o2:78",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:143",
+   "label": "同城配送",
+   "fromNode": "o2:77",
+   "toNode": "o2:79",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:144",
+   "label": "自提",
+   "fromNode": "o2:77",
+   "toNode": "o2:80",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:145",
+   "label": "",
+   "fromNode": "o2:81",
+   "toNode": "o2:82",
+   "fromSide": "bottom",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:146",
+   "label": "",
+   "fromNode": "o2:80",
+   "toNode": "o2:82",
+   "fromSide": "bottom",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:147",
+   "label": "",
+   "fromNode": "o2:84",
+   "toNode": "o2:85",
+   "fromSide": "bottom",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:148",
+   "label": "",
+   "fromNode": "o2:55",
+   "toNode": "o2:85",
+   "fromSide": "bottom",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:149",
+   "label": "",
+   "fromNode": "o2:54",
+   "toNode": "o2:55",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:150",
+   "label": "运输中",
+   "fromNode": "o2:86",
+   "toNode": "o2:87",
+   "fromSide": "left",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:151",
+   "label": "",
+   "fromNode": "o2:87",
+   "toNode": "o2:86",
+   "fromSide": "right",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:152",
+   "label": "已签收",
+   "fromNode": "o2:86",
+   "toNode": "o2:88",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:153",
+   "label": "",
+   "fromNode": "o2:88",
+   "toNode": "o2:89",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:154",
+   "label": "否",
+   "fromNode": "o2:89",
+   "toNode": "o2:91",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:155",
+   "label": "",
+   "fromNode": "o2:89",
+   "toNode": "o2:90",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:156",
+   "label": "",
+   "fromNode": "o2:90",
+   "toNode": "o2:101",
+   "fromSide": "bottom",
+   "toSide": "left",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:157",
+   "label": "",
+   "fromNode": "o2:100",
+   "toNode": "o2:101",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:158",
+   "label": "",
+   "fromNode": "o2:99",
+   "toNode": "o2:101",
+   "fromSide": "bottom",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:159",
+   "label": "",
+   "fromNode": "o2:102",
+   "toNode": "o2:101",
+   "fromSide": "bottom",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:160",
+   "label": "否",
+   "fromNode": "o2:97",
+   "toNode": "o2:99",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:161",
+   "label": "",
+   "fromNode": "o2:96",
+   "toNode": "o2:97",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:162",
+   "label": "是",
+   "fromNode": "o2:97",
+   "toNode": "o2:98",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:163",
+   "label": "",
+   "fromNode": "o2:98",
+   "toNode": "o2:100",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:164",
+   "label": "",
+   "fromNode": "o2:94",
+   "toNode": "o2:98",
+   "fromSide": "bottom",
+   "toSide": "right",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 1,
+     "y": 0.5
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:165",
+   "label": "",
+   "fromNode": "o2:95",
+   "toNode": "o2:102",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:166",
+   "label": "仅退款",
+   "fromNode": "o2:92",
+   "toNode": "o2:94",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:167",
+   "label": "换货",
+   "fromNode": "o2:92",
+   "toNode": "o2:95",
+   "fromSide": "right",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 1,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:168",
+   "label": "",
+   "fromNode": "o2:93",
+   "toNode": "o2:96",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:169",
+   "label": "退货退款",
+   "fromNode": "o2:92",
+   "toNode": "o2:93",
+   "fromSide": "left",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0,
+     "y": 0.5
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  },
+  {
+   "id": "c2:170",
+   "label": "",
+   "fromNode": "o2:56",
+   "toNode": "o2:57",
+   "fromSide": "bottom",
+   "toSide": "top",
+   "start": null,
+   "end": null,
+   "pos": {
+    "s": {
+     "x": 0.5,
+     "y": 1
+    },
+    "e": {
+     "x": 0.5,
+     "y": 0
+    }
+   },
+   "dangling": false
+  }
+ ]
+}
