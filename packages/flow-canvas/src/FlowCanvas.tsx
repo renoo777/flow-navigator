@@ -1260,9 +1260,12 @@ export function FlowCanvas({
       const ap = sa && sBox ? anchorPoint(sBox, sa) : null;
       const bp = ta && tBox ? anchorPoint(tBox, ta) : null;
       /* WP5：有折点 / 旧版单轴路由 / 端点被吸到自定义位置 → 都交给 ManualEdge 自绘。
-         WP5b：肘线 / 曲线 / 直线一视同仁，三者共用同一份折点数据，只是穿线方式不同。 */
-      const manual =
-        isRoutableEdgeType(e.type) && (isEdgeRoute(e.data?.route) || !!ap || !!bp);
+         WP5b：肘线 / 曲线 / 直线一视同仁，三者共用同一份折点数据，只是穿线方式不同。
+         P2：只要是三种可路由线型就一律自绘 —— 否则没有折点的普通连线会走 React Flow
+         内置组件，其 EdgeText 是单行 SVG <text>（源码连 tspan 都没有），长说明会被拉成
+         一条横穿画布的线，HTML chip（限宽换行）根本没机会出现。第 4 档回落的
+         getBezierPath / getStraightPath / getSmoothStepPath 与内置算法完全一致。 */
+      const manual = isRoutableEdgeType(e.type);
       const manualCls = manual ? (cls ? `${cls} fn-manual-route` : 'fn-manual-route') : cls;
       return {
         ...e,

@@ -594,9 +594,12 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   border-radius: 4px;
   background: var(--surface-1);
   color: var(--n-fg, var(--k-fg, var(--ink-1)));
-  padding: 1px 3px;
-  margin: -1px -3px;
-  box-shadow: 0 0 0 1.5px var(--accent);
+  /* padding / margin 一律为 0：任何盒模型变化都会让编辑态与展示态错位（实测负 margin
+     并不能完全抵消 padding，编辑框会比原标签宽约 6px）。高亮与底色改用 box-shadow
+     向外扩散（spread）—— 完全不参与布局，文字位置像素级不动。 */
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 0 0 3px var(--surface-1), 0 0 0 4.5px var(--accent);
 }
 
 /* 话术层卡片：宽度由节点 data.talkW 内联控制（右缘把手可拖），这里只留兜底与定位上下文 */
