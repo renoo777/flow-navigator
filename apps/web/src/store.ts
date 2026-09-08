@@ -31,7 +31,13 @@ import {
   type NodeKind,
   type ScenarioStep,
 } from '@flow/core';
-import { EDGE_TYPE_DEFAULT, type SopFlowNode } from '@flow/canvas';
+import {
+  EDGE_TYPE_DEFAULT,
+  isExprNode,
+  type EdgeRoutePatch,
+  type ExprType,
+  type SopFlowNode,
+} from '@flow/canvas';
 import { DOCS_STORE, KV_STORE, dbDelete, dbGet, dbGetAll, dbPut } from './idb';
 import { isDesktop, vaultLoad, vaultPath, vaultSave } from './vault';
 
@@ -48,12 +54,15 @@ function layoutPositions(
   edges: Edge[],
   view: FlowView
 ): Map<string, { x: number; y: number }> {
-  const coreNodes = nodes.map((n) => ({
-    id: n.id,
-    type: 'sop' as const,
-    position: { x: 0, y: 0 },
-    data: n.data,
-  }));
+  /* WP4：dagre 只排流程节点（sop）；自由表达节点（便签/贴图/标注）不参与自动布局 */
+  const coreNodes = nodes
+    .filter((n) => !isExprNode(n))
+    .map((n) => ({
+      id: n.id,
+      type: 'sop' as const,
+      position: { x: 0, y: 0 },
+      data: n.data,
+    }));
   const coreEdges = edges.map((e) => ({
     id: e.id,
     source: e.source,
@@ -141,11 +150,49 @@ function cleanPaint(raw: unknown): NodePaint | null {
   return Object.keys(out).length ? out : null;
 }
 
+/** WP4 表达节点归一（note/image/label）：
+ *  便签/标注 label 可空（渲染兜底占位）；贴图必须 src；标注保留 arrow 世界坐标。
+ *  统一清洗 position/posByView/color；不入库字段（editing/locked/_mark）一律丢弃。 */
+const EXPR_TYPES = ['note', 'image', 'label'];
+
+function normalizeExprNode(raw: Record<string, unknown>, type: 'note' | 'image' | 'label'): SopFlowNode | null {
+  const d = (raw.data ?? {}) as Record<string, unknown>;
+  const pos = (raw.position ?? {}) as Record<string, unknown>;
+  const color = cleanPaint(d.color);
+  const posByView = cleanPosByView(raw.posByView);
+  const node = {
+    id: raw.id,
+    type,
+    position: { x: Number(pos.x) || 0, y: Number(pos.y) || 0 },
+    ...(posByView ? { posByView } : {}),
+    data: {} as Record<string, unknown>,
+    selected: false,
+  };
+  if (type === 'image') {
+    if (typeof d.src === 'string' && d.src.trim()) node.data.src = d.src.trim();
+    if (typeof d.label === 'string' && d.label.trim()) node.data.label = d.label.trim();
+  } else {
+    node.data.label = typeof d.label === 'string' ? d.label : '';
+  }
+  if (type === 'label') {
+    const a = d.arrow as Record<string, unknown> | undefined;
+    if (a && typeof a === 'object' && Number.isFinite(Number(a.x)) && Number.isFinite(Number(a.y))) {
+      node.data.arrow = { x: Math.round(Number(a.x)), y: Math.round(Number(a.y)) };
+    }
+  }
+  if (color) node.data.color = color;
+  return node as unknown as SopFlowNode;
+}
+
 function normalizeNode(raw: unknown): SopFlowNode | null {
   if (!raw || typeof raw !== 'object') return null;
   const n = raw as Record<string, unknown>;
   const d = (n.data ?? {}) as Record<string, unknown>;
   if (typeof n.id !== 'string' || typeof d !== 'object' || d === null) return null;
+  /* WP4：自由表达节点走独立清洗（type 判别；旧数据无 type 一律按 sop） */
+  if (typeof n.type === 'string' && EXPR_TYPES.includes(n.type)) {
+    return normalizeExprNode(n, n.type as 'note' | 'image' | 'label');
+  }
   const kind = VALID_KINDS.includes(d.kind as string) ? (d.kind as NodeKind) : 'step';
   const talk = Array.isArray(d.talk)
     ? (d.talk as unknown[])
@@ -219,7 +266,9 @@ function normalizeEdge(raw: unknown): Edge | null {
   if (!raw || typeof raw !== 'object') return null;
   const e = raw as Record<string, unknown>;
   if (typeof e.source !== 'string' || typeof e.target !== 'string') return null;
-  const t = typeof e.type === 'string' && VALID_EDGE_TYPES.has(e.type) ? (e.type as string) : 'step';
+  /* 肘线统一走 smoothstep（圆角）：旧图数据里的 step（直角）读入即迁移 */
+  const rawT = typeof e.type === 'string' && VALID_EDGE_TYPES.has(e.type) ? e.type : null;
+  const t = rawT === 'step' ? 'smoothstep' : (rawT ?? EDGE_TYPE_DEFAULT);
   const out: Edge = {
     id: typeof e.id === 'string' && e.id ? e.id : edgeIdOf(e.source, e.target),
     source: e.source,
@@ -287,7 +336,9 @@ export function sanitizeContent(raw: unknown): FlowContent | null {
     enabledVarNodeIds: enabled,
     defaultEdgeType:
       typeof s.defaultEdgeType === 'string' && VALID_EDGE_TYPES.has(s.defaultEdgeType)
-        ? (s.defaultEdgeType as string)
+        ? s.defaultEdgeType === 'step'
+          ? 'smoothstep'
+          : (s.defaultEdgeType as string)
         : EDGE_TYPE_DEFAULT,
   };
 }
@@ -504,6 +555,8 @@ export interface AppState {
   openPicker: (x: number, y: number) => void;
   closePicker: () => void;
   addNodeAt: (kind: NodeKind, x: number, y: number) => void;
+  /** WP4：新建自由表达节点（便签 note / 贴图 image / 标注 label），入历史并进入编辑态 */
+  addExprNode: (type: ExprType, x: number, y: number) => void;
   renameEdge: (edgeId: string, label: string) => void;
   afterDelete: (removedNodeIds: string[], removedEdgeIds: string[]) => void;
   /** 拖拽连线端点改连（入历史） */
@@ -557,8 +610,12 @@ export interface AppState {
   setDocName: (name: string) => void;
   setDefaultEdgeType: (t: string) => void;
   setEdgeTypes: (edgeIds: string[], t: string) => void;
-  /** 端点交还自动（清掉手动钉住的锚点） */
+  /** 端点交还自动（清掉手动钉住的锚点 + 手动折点，整条线交还自动路由） */
   resetEdgeAnchors: (edgeIds: string[]) => void;
+  /** WP5b：把本图所有连线一并复位（清空折点 / 端点吸附），一步历史可撤销 */
+  resetAllEdgeRoutes: () => void;
+  /** WP5 连线编辑：写入折点路由 / 端点锚点 + 把两端钉到当前侧。commit=true 才推历史（每轮拖动只推一次）。 */
+  setEdgeRoute: (edgeId: string, patch: EdgeRoutePatch, commit: boolean) => void;
   setEnabledVars: (nodeIds: string[]) => void;
   toggleVarEnabled: (nodeId: string) => void;
   exportJSON: () => string;
@@ -642,14 +699,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     pushHistory();
     set((st) => {
       if (!conn.source || !conn.target) return st;
+      /* WP4 兜底：自由表达节点（便签/贴图/标注）是无端口装饰，绝不允许产生流程边
+         （UI 层 isValidConnection 已拦，这里双保险防 bypass） */
+      const srcNode = st.nodes.find((n) => n.id === conn.source);
+      const tgtNode = st.nodes.find((n) => n.id === conn.target);
+      if (!srcNode || !tgtNode || isExprNode(srcNode) || isExprNode(tgtNode)) return st;
       const dup = st.edges.some((e) => e.source === conn.source && e.target === conn.target);
       if (dup) return st;
+      /* Bug：左右端点连不上。根因 —— 只存 source/target 会丢掉用户实际拉的端口
+         （conn.sourceHandle/targetHandle），displayedEdges 便按射线求交自动选侧
+         （两节点斜向时多半落到上/下），于是"从左拉到左"出来却挂在上下。
+         手工拉线 = 用户明确指定端口 → 保存 handle 并钉住（与 onReconnect 同语义）。 */
       const edge: Edge = {
         id: edgeIdOf(conn.source, conn.target),
         source: conn.source,
         target: conn.target,
         type: st.defaultEdgeType,
         label: '',
+        ...(conn.sourceHandle ? { sourceHandle: conn.sourceHandle } : {}),
+        ...(conn.targetHandle ? { targetHandle: conn.targetHandle } : {}),
+        data: { anchorPinned: true },
       };
       return { edges: addEdge(edge, st.edges) };
     });
@@ -802,17 +871,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   relayout: () =>
     set((st) => {
-      const coreNodes = st.nodes.map((n) => ({
-        id: n.id,
-        type: 'sop' as const,
-        position: { x: 0, y: 0 },
-        data: n.data,
-      }));
+      /* WP4：只整理流程节点，表达节点原样保留 */
+      const coreNodes = st.nodes
+        .filter((n) => !isExprNode(n))
+        .map((n) => ({
+          id: n.id,
+          type: 'sop' as const,
+          position: { x: 0, y: 0 },
+          data: n.data,
+        }));
       const coreEdges = st.edges.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
-        type: 'step' as const,
+        type: 'smoothstep' as const,
         label: typeof e.label === 'string' ? e.label : '',
       }));
       const laid = layoutGraph(coreNodes, coreEdges, st.view);
@@ -831,17 +903,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       const sel = st.nodes.filter((n) => n.selected);
       if (sel.length < 1) return st;
       const ids = new Set(sel.map((n) => n.id));
-      const coreNodes = st.nodes.map((n) => ({
-        id: n.id,
-        type: 'sop' as const,
-        position: { x: 0, y: 0 },
-        data: n.data,
-      }));
+      /* WP4：局部整理同样只重排流程节点（表达节点无连线，不参与 dagre） */
+      const coreNodes = st.nodes
+        .filter((n) => !isExprNode(n))
+        .map((n) => ({
+          id: n.id,
+          type: 'sop' as const,
+          position: { x: 0, y: 0 },
+          data: n.data,
+        }));
       const coreEdges = st.edges.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
-        type: 'step' as const,
+        type: 'smoothstep' as const,
         label: typeof e.label === 'string' ? e.label : '',
       }));
       const laid = layoutGraph(coreNodes, coreEdges, st.view);
@@ -884,6 +959,23 @@ export const useAppStore = create<AppState>((set, get) => ({
           editing: true,
         },
       };
+      return { nodes: [...st.nodes, node], picker: null };
+    });
+  },
+
+  addExprNode: (type, x, y) => {
+    pushHistory();
+    set((st) => {
+      const data: Record<string, unknown> =
+        type === 'image' ? { editing: true } : { label: '', editing: true };
+      /* 新建即进入编辑/上传态，落点在双击处；data 不入库字段在编辑完由组件清掉 */
+      const node = {
+        id: nextId('n'),
+        type,
+        position: { x, y },
+        data,
+        selected: false,
+      } as unknown as SopFlowNode;
       return { nodes: [...st.nodes, node], picker: null };
     });
   },
@@ -1104,20 +1196,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (active?.value) {
       const doc = await dbGet<FlowDoc>(DOCS_STORE, active.value);
       if (doc) {
+        /* 连线类型迁移（与 openDoc / sanitizeContent 一致）：旧 step 直角 → smoothstep 圆角肘线 */
+        const edges = (doc.flow.edges ?? []).map((e) =>
+          e.type === 'step' ? { ...e, type: 'smoothstep' as Edge['type'] } : e
+        );
+        const defaultEdgeType =
+          doc.flow.defaultEdgeType === 'step' ? 'smoothstep' : doc.flow.defaultEdgeType;
         set({
           docId: doc.id,
           docName: doc.name,
           docGroup: doc.group,
           readonly: false,
           nodes: doc.flow.nodes,
-          edges: doc.flow.edges,
+          edges,
           assignments: doc.flow.assignments,
           steps: doc.flow.steps ?? stepsOfAssignments(doc.flow.assignments),
           redoSteps: [],
           view: doc.flow.view,
           mode: doc.flow.mode,
           enabledVarNodeIds: doc.flow.enabledVarNodeIds,
-          defaultEdgeType: doc.flow.defaultEdgeType,
+          defaultEdgeType,
           undoStack: [],
           redoStack: [],
           ready: true,
@@ -1132,13 +1230,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   openDoc: async (id, readonly = false) => {
     const doc = await dbGet<FlowDoc>(DOCS_STORE, id);
     if (!doc) return;
+    /* 连线类型迁移：旧数据「肘线」为直角 step，读入即平滑为 smoothstep（圆角肘线）——
+       与 sanitizeContent 的迁移保持一致，这里直信路径也要过一遍 */
+    const edges = (doc.flow.edges ?? []).map((e) =>
+      e.type === 'step' ? { ...e, type: 'smoothstep' as Edge['type'] } : e
+    );
+    const defaultEdgeType =
+      doc.flow.defaultEdgeType === 'step' ? 'smoothstep' : doc.flow.defaultEdgeType;
     set({
       docId: doc.id,
       docName: doc.name,
       docGroup: doc.group,
       readonly,
       nodes: doc.flow.nodes,
-      edges: doc.flow.edges,
+      edges,
       assignments: doc.flow.assignments,
       steps: doc.flow.steps ?? stepsOfAssignments(doc.flow.assignments),
       redoSteps: [],
@@ -1151,7 +1256,7 @@ export const useAppStore = create<AppState>((set, get) => ({
        */
       mode: readonly ? 'view' : 'edit',
       enabledVarNodeIds: doc.flow.enabledVarNodeIds,
-      defaultEdgeType: doc.flow.defaultEdgeType,
+      defaultEdgeType,
       undoStack: [],
       redoStack: [],
       picker: null,
@@ -1260,7 +1365,39 @@ export const useAppStore = create<AppState>((set, get) => ({
       edges: st.edges.map((e) => (edgeIds.includes(e.id) ? { ...e, type: t } : e)),
     })),
 
-  /** 端点交还自动：清掉钉住标记，端点重新跟着节点相对位置走 */
+  /** WP5 连线编辑：边 data.route（折点）/ data.sourceAnchor·targetAnchor（端点吸附）+ 端点钉住 */
+  setEdgeRoute: (edgeId, patch, commit) => {
+    if (commit) pushHistory();
+    set((st) => ({
+      edges: st.edges.map((e) => {
+        if (e.id !== edgeId) return e;
+        const d: Record<string, unknown> = {
+          ...((e.data ?? {}) as Record<string, unknown>),
+        };
+        if (patch.anchorPinned) d.anchorPinned = true;
+        else delete d.anchorPinned;
+        if (patch.route) d.route = patch.route;
+        else delete d.route;
+        /* 端点锚点：只有显式传了才动（undefined = 保持原样，null = 清除） */
+        if (patch.sourceAnchor !== undefined) {
+          if (patch.sourceAnchor) d.sourceAnchor = patch.sourceAnchor;
+          else delete d.sourceAnchor;
+        }
+        if (patch.targetAnchor !== undefined) {
+          if (patch.targetAnchor) d.targetAnchor = patch.targetAnchor;
+          else delete d.targetAnchor;
+        }
+        return {
+          ...e,
+          sourceHandle: patch.sourceHandle,
+          targetHandle: patch.targetHandle,
+          data: d,
+        };
+      }),
+    }));
+  },
+
+  /** 端点交还自动：清掉钉住标记与手动路由，端点/中段重新跟着几何走 */
   resetEdgeAnchors: (edgeIds) => {
     pushHistory();
     set((st) => ({
@@ -1271,6 +1408,29 @@ export const useAppStore = create<AppState>((set, get) => ({
         delete next.targetHandle;
         const d = { ...((e.data ?? {}) as Record<string, unknown>) };
         delete d.anchorPinned;
+        delete d.route;
+        delete d.sourceAnchor;
+        delete d.targetAnchor;
+        if (Object.keys(d).length) next.data = d;
+        else delete next.data;
+        return next;
+      }),
+    }));
+  },
+
+  /** 全部连线复位：与 resetEdgeAnchors 同一套清理逻辑，只是作用于所有边 */
+  resetAllEdgeRoutes: () => {
+    pushHistory();
+    set((st) => ({
+      edges: st.edges.map((e) => {
+        const next: Edge = { ...e };
+        delete next.sourceHandle;
+        delete next.targetHandle;
+        const d = { ...((e.data ?? {}) as Record<string, unknown>) };
+        delete d.anchorPinned;
+        delete d.route;
+        delete d.sourceAnchor;
+        delete d.targetAnchor;
         if (Object.keys(d).length) next.data = d;
         else delete next.data;
         return next;

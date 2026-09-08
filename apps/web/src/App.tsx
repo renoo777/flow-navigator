@@ -21,7 +21,16 @@ import {
   type ImportedGraph,
   type NodeKind,
 } from '@flow/core';
-import { FlowCanvas, TypePicker, type CommandItem, type NodePaint, type SopFlowNode } from '@flow/canvas';
+import {
+  FlowCanvas,
+  TypePicker,
+  isExprNode,
+  type CommandItem,
+  type EdgeRoutePatch,
+  type ExprType,
+  type NodePaint,
+  type SopFlowNode,
+} from '@flow/canvas';
 import { VariableDock } from '@flow/dock';
 import { VariableGuideModal, VariableManageModal } from './VarModals';
 import { PasteImportModal, type ImportLayout } from './PasteImportModal';
@@ -127,10 +136,13 @@ function EditorScreen() {
     openPicker,
     closePicker,
     addNodeAt,
+    addExprNode,
     renameEdge,
     setDefaultEdgeType,
     setEdgeTypes,
     resetEdgeAnchors,
+    resetAllEdgeRoutes,
+    setEdgeRoute,
     setEnabledVars,
     toggleVarEnabled,
     openDoc,
@@ -156,20 +168,23 @@ function EditorScreen() {
   const handleExternalGraph = useCallback((g: ImportedGraph) => setPendingImport(g), []);
   useEditorShortcuts({ onExternalGraph: handleExternalGraph });
 
-  /* —— 变量派生：候选（全 ≥2 分支）/ 启用（导航决策点）—— */
+  /* —— 变量派生：候选（全 ≥2 分支）/ 启用（导航决策点）——
+     WP4：表达节点（便签/贴图/标注）不喂给核心算法（引擎/dagre/变量/分享卡都不碰它） */
   const coreFrom = useCallback(
     () => ({
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        type: 'sop' as const,
-        position: { x: 0, y: 0 },
-        data: n.data,
-      })),
+      nodes: nodes
+        .filter((n) => !isExprNode(n))
+        .map((n) => ({
+          id: n.id,
+          type: 'sop' as const,
+          position: { x: 0, y: 0 },
+          data: n.data,
+        })),
       edges: edges.map((e) => ({
         id: e.id,
         source: e.source,
         target: e.target,
-        type: 'step' as const,
+        type: 'smoothstep' as const,
         label: typeof e.label === 'string' ? e.label : '',
       })),
     }),
@@ -271,14 +286,16 @@ function EditorScreen() {
     );
   }, [editable, mode, openPicker]);
 
+  /** WP4：sop 四种 + 表达三类统一落点（双击空白 picker） */
   const handleTypePick = useCallback(
-    (kind: NodeKind) => {
+    (pick: NodeKind | ExprType) => {
       if (!picker) return;
       const pos = rf.screenToFlowPosition({ x: picker.x, y: picker.y });
-      addNodeAt(kind, pos.x, pos.y);
+      if (pick === 'note' || pick === 'image' || pick === 'label') addExprNode(pick, pos.x, pos.y);
+      else addNodeAt(pick, pos.x, pos.y);
       closePicker();
     },
-    [picker, rf, addNodeAt, closePicker]
+    [picker, rf, addNodeAt, addExprNode, closePicker]
   );
 
   /** 一键整理：dagre TB 布局 + fitView（US-07/F5，Build E 双引擎参数化已还原） */
@@ -401,14 +418,16 @@ function EditorScreen() {
    *  分享卡必须永远呈现「整理过」的样子，但不能动用户画布上的真实坐标。 */
   const handleShareCard = useCallback(async () => {
     const wOf = (label: string) => Math.max(148, Math.min(300, (label || '').length * 15 + 56));
+    /* WP4：分享卡只讲流程 —— 表达节点（便签/贴图/标注）是本地批注，不进入社交图 */
+    const sopNodes = nodes.filter((n) => !isExprNode(n));
     try {
       const laid = layoutGraph(
-        nodes.map((n) => ({ id: n.id, type: 'sop' as const, position: n.position, data: n.data })),
+        sopNodes.map((n) => ({ id: n.id, type: 'sop' as const, position: n.position, data: n.data })),
         edges.map((e) => ({
           id: e.id,
           source: e.source,
           target: e.target,
-          type: 'step' as const,
+          type: 'smoothstep' as const,
           label: typeof e.label === 'string' ? e.label : '',
         })),
         'flow'
@@ -417,7 +436,7 @@ function EditorScreen() {
       await exportShareCard(
         {
           title: docName || '未命名流程图',
-          nodes: nodes.map((n) => {
+          nodes: sopNodes.map((n) => {
             const p = posById.get(n.id) ?? n.position;
             return {
               id: n.id,
@@ -519,6 +538,14 @@ function EditorScreen() {
     [resetEdgeAnchors, setMode]
   );
 
+  const handleEdgeRoute = useCallback(
+    (edgeId: string, patch: EdgeRoutePatch, commit: boolean) => {
+      setEdgeRoute(edgeId, patch, commit);
+      setMode('edit');
+    },
+    [setEdgeRoute, setMode]
+  );
+
   /** Build L · 命令面板：全局动作一键直达（节点跳转项由画布自动生成） */
   const addAtCenter = useCallback(
     (kind: NodeKind) => {
@@ -532,9 +559,23 @@ function EditorScreen() {
     },
     [rf, addNodeAt]
   );
+  /** WP4：命令面板在画布中心新建表达节点 */
+  const addExprAtCenter = useCallback(
+    (type: ExprType) => {
+      const el = document.querySelector('.canvas-wrap');
+      const r = el?.getBoundingClientRect();
+      const p = rf.screenToFlowPosition({
+        x: r ? r.left + r.width / 2 : window.innerWidth / 2,
+        y: r ? r.top + r.height / 2 : window.innerHeight / 2,
+      });
+      addExprNode(type, p.x, p.y);
+    },
+    [rf, addExprNode]
+  );
   const dockCommands = useMemo<CommandItem[]>(
     () => [
       { id: 'layout', title: '整理布局', group: '视图', hint: '一键 dagre', run: handleRunLayout },
+      { id: 'edge-reset-all', title: '重置全部连线', group: '视图', hint: '清空所有折点与端点吸附', run: resetAllEdgeRoutes },
       { id: 'view-talk', title: `切换到${view === 'flow' ? '话术层' : '结构层'}`, group: '视图', run: () => handleViewChange(view === 'flow' ? 'talk' : 'flow') },
       { id: 'theme', title: `切换到${themeVal === 'dark' ? '浅色' : '深色'}主题`, group: '视图', run: toggleTheme },
       { id: 'grid', title: gridVisible ? '隐藏网格' : '显示网格', group: '视图', run: () => setGridVisible(!gridVisible) },
@@ -544,6 +585,9 @@ function EditorScreen() {
       { id: 'add-decision', title: '新建：分支决策', group: '编辑', run: () => addAtCenter('decision') },
       { id: 'add-start', title: '新建：开始节点', group: '编辑', run: () => addAtCenter('io-start') },
       { id: 'add-end', title: '新建：结束节点', group: '编辑', run: () => addAtCenter('io-end') },
+      { id: 'add-note', title: '新建：便签', group: '编辑', run: () => addExprAtCenter('note') },
+      { id: 'add-image', title: '新建：贴图', group: '编辑', run: () => addExprAtCenter('image') },
+      { id: 'add-label', title: '新建：标注', group: '编辑', run: () => addExprAtCenter('label') },
       { id: 'undo', title: '撤销', group: '编辑', hint: 'Ctrl+Z', run: undo },
       { id: 'redo', title: '重做', group: '编辑', hint: 'Ctrl+Shift+Z', run: redo },
       { id: 'vars', title: '管理变量', group: '编辑', run: () => setManageOpen(true) },
@@ -554,12 +598,14 @@ function EditorScreen() {
     ],
     [
       handleRunLayout, handleViewChange, view, themeVal, toggleTheme, gridVisible, setGridVisible,
-      snapEnabled, setSnap, mode, setMode, addAtCenter, undo, redo, setManageOpen,
+      snapEnabled, setSnap, mode, setMode, addAtCenter, addExprAtCenter, undo, redo, setManageOpen,
       handleExport, handleExportPng, handleShareCard, handleBack,
     ]
   );
 
   const canEditGraph = editable && mode === 'edit';
+  /* WP4：空态按「流程节点数」判定（只有便签/贴图/标注的画布不算流程空，但也提示去搭 SOP） */
+  const flowNodeCount = useMemo(() => nodes.filter((n) => !isExprNode(n)).length, [nodes]);
 
   return (
     <div className="app">
@@ -608,7 +654,7 @@ function EditorScreen() {
         selectedCount={selectedCount}
       />
       <main className="canvas">
-        {nodes.length === 0 && (
+        {flowNodeCount === 0 && (
           <div className="canvas-empty" data-testid="empty-hint">
             <div className="ce-title">{readonly ? '（空白流程图）' : '空白画布'}</div>
             <div className="ce-sub">
@@ -640,6 +686,8 @@ function EditorScreen() {
           onPaneClickClear={handlePaneClickClear}
           onEdgeTypeApply={handleEdgeTypeApply}
           onEdgeAnchorReset={handleAnchorReset}
+          onEdgeRouteReset={handleAnchorReset}
+          onEdgeRoute={handleEdgeRoute}
           defaultEdgeType={defaultEdgeType}
           editable={canEditGraph}
           onNodeDragStart={mark}

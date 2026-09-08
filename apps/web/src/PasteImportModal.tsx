@@ -8,9 +8,9 @@ export type ImportLayout = 'reflow' | 'keep';
 /** 连线样式三选（肉眼可挑，不必先记住名词） */
 const EDGE_STYLE_OPTIONS: { id: string; label: string; desc: string; path: string }[] = [
   {
-    id: 'step',
+    id: 'smoothstep',
     label: '肘线',
-    desc: '直角折线，流程走向最清晰（推荐）',
+    desc: '圆角折线，流程走向最清晰（推荐）',
     path: 'M6 30 V15 Q6 10 11 10 H30',
   },
   {
@@ -40,7 +40,7 @@ export function PasteImportModal({
   onApply: (layout: ImportLayout, replace: boolean, edgeType: string) => void;
 }) {
   const [layout, setLayout] = useState<ImportLayout>('reflow');
-  const [edgeType, setEdgeType] = useState('step');
+  const [edgeType, setEdgeType] = useState('smoothstep');
   const { nodes, edges, decisions, labeled, parallel, weak } = graph.stats;
 
   return (

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useReactFlow, type Edge } from '@xyflow/react';
 import { isFeishuWhiteboardHtml, parseFeishuWhiteboard, type ImportedGraph } from '@flow/core';
 import { useAppStore, type FlowContent } from './store';
-import type { SopFlowNode } from '@flow/canvas';
+import { isExprNode, type SopFlowNode } from '@flow/canvas';
 
 const CLIP_KEY = 'flow-app:clip';
 
@@ -97,10 +97,11 @@ function reportImportError(e: unknown) {
   window.alert(`剪贴板里的画板数据没能解析成功（${msg}）。\n可在飞书画板里重新复制一次再试。`);
 }
 
-/** 从当前选中构造剪贴板载荷 */
+/** 从当前选中构造剪贴板载荷。WP4：表达节点（便签/贴图/标注）不进本软件剪贴板
+ *  （Clip schema 只有 sop 字段；图片 base64 跨粘贴也易爆 localStorage）—— 只复制流程节点 */
 function buildClip(): ClipPayload | null {
   const st = useAppStore.getState();
-  const sel = st.nodes.filter((n) => n.selected);
+  const sel = st.nodes.filter((n) => n.selected && !isExprNode(n));
   if (!sel.length) return null;
   const ids = new Set(sel.map((n) => n.id));
   const xs = sel.map((n) => n.position.x);
@@ -124,7 +125,7 @@ function buildClip(): ClipPayload | null {
       source: e.source,
       target: e.target,
       label: typeof e.label === 'string' ? e.label : '',
-      type: e.type && e.type !== 'orth' ? e.type : 'step',
+      type: e.type && e.type !== 'orth' ? e.type : 'smoothstep',
     }));
   return { nodes, edges, center };
 }

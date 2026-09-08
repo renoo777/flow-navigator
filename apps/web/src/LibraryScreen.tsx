@@ -123,7 +123,7 @@ export function LibraryScreen() {
         id: e.id,
         source: e.source,
         target: e.target,
-        type: 'step' as const,
+        type: 'smoothstep' as const,
         label: typeof e.label === 'string' ? e.label : '',
       }));
       m.set(
