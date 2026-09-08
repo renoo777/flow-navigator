@@ -228,6 +228,16 @@ describe('端点锚点', () => {
     expect(anchorPoint(box, { side: 'right', t: 1 })).toEqual({ x: 200, y: 100 });
   });
 
+  it('projectToBorder：中点磁吸（靠近 0.5 吸到正中，远离则保持自由）', () => {
+    /* 飞书 / FigJam 的端点吸附到边时默认落在中点，用户拖到附近必须停得住。
+       没有磁吸时 t 是连续值，能停在 0.47/0.53 却停不到 0.5。 */
+    expect(projectToBorder(box, 260, 52).t).toBe(0.5);
+    expect(projectToBorder(box, 260, 48).t).toBe(0.5);
+    expect(projectToBorder(box, 105, 5).t).toBe(0.5);
+    expect(projectToBorder(box, 260, 70).t).toBeCloseTo(0.7, 5);
+    expect(projectToBorder(box, 50, -40).t).toBeCloseTo(0.25, 5);
+  });
+
   it('projectToBorder：框外吸附到最近边', () => {
     expect(projectToBorder(box, 260, 50)).toEqual({ side: 'right', t: 0.5 });
     expect(projectToBorder(box, 50, -40)).toEqual({ side: 'top', t: 0.25 });

@@ -28,6 +28,7 @@
  * 文本在 `info.textV2.text`（URL 编码，`\n` 分行）；我们卡片是单行 nowrap，故换行折叠为空格。
  */
 import { inferAnchorSides } from './anchor';
+import { flowCardSize } from './nodeSize';
 import type { AnchorSide } from './anchor';
 import type { NodeKind } from './types';
 
@@ -310,10 +311,39 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
     return 'step';
   };
 
-  /* ---------- 4) 坐标归一化：整体平移到 (PAD, PAD)，保持相对位置 ---------- */
-  const minX = Math.min(...raws.map((n) => n.x));
-  const minY = Math.min(...raws.map((n) => n.y));
-  const nodes: ImportedNode[] = raws.map((n) => {
+  /* ---------- 4) 坐标归一化：整体平移到 (PAD, PAD)，保持相对位置 ----------
+     不能照搬飞书坐标：飞书原画节点是 106~160 宽 × 73~131 高（接近方形），
+     而我们的流程卡片是 ≤216 宽 × 46~53 高（更宽更矮）。
+     直接套用的话，水平方向卡片会互相压住，垂直方向又空得过头 ——
+     这就是「节点重叠 / 整体比例失真」的来源。
+     所以这里按「中心点 + 卡片尺寸比例」做分轴缩放：
+       横向放大（我们更宽，需要更多水平间距）、纵向压缩（我们更矮，不需要那么多），
+     目的是保住飞书的相对布局与走向，同时用我们自己的卡片尺寸排布、不重叠。 */
+  const avgFW = raws.reduce((s, n) => s + n.w, 0) / (raws.length || 1);
+  const avgFH = raws.reduce((s, n) => s + n.h, 0) / (raws.length || 1);
+  const ourSize = new Map(raws.map((n) => [n.id, flowCardSize(n.label)]));
+  const avgOW =
+    [...ourSize.values()].reduce((s, z) => s + z.w, 0) / (ourSize.size || 1);
+  const avgOH =
+    [...ourSize.values()].reduce((s, z) => s + z.h, 0) / (ourSize.size || 1);
+  const kx = Math.min(2.4, Math.max(1, avgOW / (avgFW || 1)));
+  const ky = Math.min(1.8, Math.max(0.55, avgOH / (avgFH || 1)));
+
+  const minCX = Math.min(...raws.map((n) => n.x + n.w / 2));
+  const minCY = Math.min(...raws.map((n) => n.y + n.h / 2));
+  /* 先按缩放后的中心点落位，再整体把左上角贴回 PAD。
+     不能只减「自己的半高」就当左上角 —— 节点高度不一样时，
+     中心最小的那个节点未必是左上角最小的那个（会出现负坐标）。 */
+  const placed = raws.map((n) => {
+    const os = ourSize.get(n.id) ?? { w: 180, h: 46 };
+    return {
+      x: (n.x + n.w / 2 - minCX) * kx - os.w / 2,
+      y: (n.y + n.h / 2 - minCY) * ky - os.h / 2,
+    };
+  });
+  const minPX = Math.min(...placed.map((p) => p.x));
+  const minPY = Math.min(...placed.map((p) => p.y));
+  const nodes: ImportedNode[] = raws.map((n, i) => {
     const kind = kindOf(n);
     if (kind === 'decision') {
       decisions += 1;
@@ -323,8 +353,8 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
       id: n.id,
       label: n.label,
       kind,
-      x: Math.round(n.x - minX + PAD),
-      y: Math.round(n.y - minY + PAD),
+      x: Math.round(placed[i].x - minPX + PAD),
+      y: Math.round(placed[i].y - minPY + PAD),
       w: Math.round(n.w),
       h: Math.round(n.h),
     };

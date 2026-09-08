@@ -351,6 +351,17 @@ export function anchorPoint(box: AnchorBox, a: EdgeAnchor): Waypoint {
   }
 }
 
+/** 端点落在某条边上时的「中点磁吸」阈值：t 落在 0.5±SNAP 内就吸到正中。
+ *  飞书画板 / FigJam 的端点吸附到边时默认落在中点，用户拖到附近就该停得住。
+ *  没有这个磁吸时 t 是连续值，用户能停在 0.47 / 0.53，唯独停不到 0.5，
+ *  表现为「四周都能移，正中间那 4 个点却选不中」。 */
+export const CENTER_SNAP = 0.08;
+
+/** 中点磁吸：靠近正中就吸死，否则保持原值 */
+function snapToCenter(t: number): number {
+  return Math.abs(t - 0.5) <= CENTER_SNAP ? 0.5 : t;
+}
+
 /** 任意点 → 最近边框上的锚点（端点自由吸附：拖到哪就吸到哪条边） */
 export function projectToBorder(box: AnchorBox, px: number, py: number): EdgeAnchor {
   const { x, y, w, h } = box;
@@ -360,10 +371,10 @@ export function projectToBorder(box: AnchorBox, px: number, py: number): EdgeAnc
   const cy = clampNum(py, y, y + h);
   /* 点在框外 → 直接投影到最近的那条边 */
   if (cx !== px || cy !== py) {
-    if (cx === x) return { side: 'left', t: clamp01((cy - y) / hh) };
-    if (cx === x + w) return { side: 'right', t: clamp01((cy - y) / hh) };
-    if (cy === y) return { side: 'top', t: clamp01((cx - x) / ww) };
-    return { side: 'bottom', t: clamp01((cx - x) / ww) };
+    if (cx === x) return { side: 'left', t: snapToCenter(clamp01((cy - y) / hh)) };
+    if (cx === x + w) return { side: 'right', t: snapToCenter(clamp01((cy - y) / hh)) };
+    if (cy === y) return { side: 'top', t: snapToCenter(clamp01((cx - x) / ww)) };
+    return { side: 'bottom', t: snapToCenter(clamp01((cx - x) / ww)) };
   }
   /* 点在框内 → 推到距离最近的边 */
   const dTop = py - y;
@@ -371,10 +382,10 @@ export function projectToBorder(box: AnchorBox, px: number, py: number): EdgeAnc
   const dLeft = px - x;
   const dRight = x + w - px;
   const m = Math.min(dTop, dBottom, dLeft, dRight);
-  if (m === dTop) return { side: 'top', t: clamp01((px - x) / ww) };
-  if (m === dBottom) return { side: 'bottom', t: clamp01((px - x) / ww) };
-  if (m === dLeft) return { side: 'left', t: clamp01((py - y) / hh) };
-  return { side: 'right', t: clamp01((py - y) / hh) };
+  if (m === dTop) return { side: 'top', t: snapToCenter(clamp01((px - x) / ww)) };
+  if (m === dBottom) return { side: 'bottom', t: snapToCenter(clamp01((px - x) / ww)) };
+  if (m === dLeft) return { side: 'left', t: snapToCenter(clamp01((py - y) / hh)) };
+  return { side: 'right', t: snapToCenter(clamp01((py - y) / hh)) };
 }
 
 export interface WaypointSource {
