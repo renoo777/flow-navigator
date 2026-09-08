@@ -1,5 +1,6 @@
 /** 节点外观常量：kind 左彩条 rail / 类型 tag（与 PoC 视觉一致） */
 import type { NodeKind } from '@flow/core';
+import type { ExprType } from './components/ExprNodes';
 
 export const KIND_RAIL: Record<NodeKind, string> = {
   'io-start': '#16a34a',
@@ -23,11 +24,22 @@ export const KIND_OPTIONS: { kind: NodeKind; label: string; desc: string }[] = [
   { kind: 'io-end', label: '结束', desc: '全图至多 1 个' },
 ];
 
-/* ===== 连线样式（RF 内置 type 名 → 中文） ===== */
-/** 连线样式三选（产品口径统一为「肘线 / 曲线 / 直线」；smoothstep 仍可被旧数据携带） */
-export const EDGE_TYPE_DEFAULT = 'step';
+/** WP4 自由表达元素（白板批注层，不参与演算）：便签 / 贴图 / 标注 */
+export const EXPR_OPTIONS: { type: ExprType; label: string; desc: string }[] = [
+  { type: 'note', label: '便签', desc: '记事贴纸 · 双击写多行' },
+  { type: 'image', label: '贴图', desc: '本地图片 / 图片链接' },
+  { type: 'label', label: '标注', desc: '说明文字 · 可拖指示箭头' },
+];
+
+/* ===== 连线样式（产品口径「肘线 / 曲线 / 直线」→ RF 内置 type） ===== */
+/**
+ * 「肘线」底层用 smoothstep（圆角正交）而非 step（直角）：
+ * 用户反馈直角肘线「僵硬」，且导入弹窗的预览 SVG 本就是圆角（Q 拐角）——
+ * 现在预览与落地一致。旧数据里 step 读入时由 normalizeEdge 迁移为 smoothstep。
+ */
+export const EDGE_TYPE_DEFAULT = 'smoothstep';
 export const EDGE_TYPE_OPTIONS: { id: string; label: string; hint: string }[] = [
-  { id: 'step', label: '肘线', hint: '直角折线' },
+  { id: 'smoothstep', label: '肘线', hint: '圆角折线' },
   { id: 'default', label: '曲线', hint: '贝塞尔曲线' },
   { id: 'straight', label: '直线', hint: '直连两点' },
 ];

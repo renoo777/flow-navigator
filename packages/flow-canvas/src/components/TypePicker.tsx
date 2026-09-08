@@ -1,8 +1,12 @@
-/** 新建节点类型选择器（US-01）：步骤 / 决策 / 开始 / 结束
+/** 新建节点类型选择器（US-01 + WP4）：步骤 / 决策 / 开始 / 结束 + 自由表达（便签/贴图/标注）
  *  fixed 定位（视口坐标），由 App 层 createPortal 到 body 渲染，避开 RF transform 容器 */
 import { useEffect, useRef, type CSSProperties } from 'react';
 import type { NodeKind } from '@flow/core';
-import { KIND_OPTIONS } from '../appearance';
+import { EXPR_OPTIONS, KIND_OPTIONS } from '../appearance';
+import type { ExprType } from './ExprNodes';
+
+/** 可新建项：sop 四种 kind + 表达三类 */
+export type PickTarget = NodeKind | ExprType;
 
 export interface TypePickerProps {
   /** 视口坐标（clientX/Y） */
@@ -11,7 +15,7 @@ export interface TypePickerProps {
   /** 全图是否已有 start/end（限制至多 1 个） */
   hasStart: boolean;
   hasEnd: boolean;
-  onPick: (kind: NodeKind) => void;
+  onPick: (target: PickTarget) => void;
   onClose: () => void;
 }
 
@@ -29,7 +33,7 @@ export function TypePicker({ x, y, hasStart, hasEnd, onPick, onClose }: TypePick
   // 超出视口右侧/底部时往回收
   const style: CSSProperties = { left: x, top: y };
   if (x > window.innerWidth - 220) style.left = x - 200;
-  if (y > window.innerHeight - 190) style.top = y - 176;
+  if (y > window.innerHeight - 300) style.top = y - 286;
 
   return (
     <div ref={ref} className="type-picker" style={style} data-testid="type-picker">
@@ -52,6 +56,20 @@ export function TypePicker({ x, y, hasStart, hasEnd, onPick, onClose }: TypePick
           </button>
         );
       })}
+      <div className="tp-sep" />
+      <div className="tp-title sub">自由表达 · 不参与演算</div>
+      {EXPR_OPTIONS.map((opt) => (
+        <button
+          key={opt.type}
+          className="tp-item"
+          title={opt.desc}
+          onClick={() => onPick(opt.type)}
+        >
+          <span className={`tp-dot e-${opt.type}`} />
+          <span className="tp-label">{opt.label}</span>
+          <span className="tp-desc">{opt.desc}</span>
+        </button>
+      ))}
     </div>
   );
 }
