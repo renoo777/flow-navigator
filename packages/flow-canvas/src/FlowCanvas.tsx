@@ -1301,7 +1301,18 @@ export function FlowCanvas({
         labelBgBorderRadius: 4,
       };
     });
-  }, [edges, scenario, focusAll, routeDone, edgeLabelOf, chain, chainRes, anchorOf, anchorBoxes]);
+  }, [
+    edges,
+    scenario,
+    focusAll,
+    routeDone,
+    edgeLabelOf,
+    chain,
+    chainRes,
+    anchorOf,
+    anchorBoxes,
+    onEdgeRename,
+  ]);
 
   /* WP5 手柄数据：选中连线后要在画布上画出的端点（方）。
      刻意放在 FlowCanvas 而不是 ManualEdge —— 没有折点的边走的是 RF 内置渲染器
@@ -1896,15 +1907,15 @@ export function FlowCanvas({
       {/* 连线标签改名浮层（双击 chip 弹出） */}
       {editingEdge && (
         <div className="edge-rename-pop" style={{ left: editingEdge.x, top: editingEdge.y - 30 }}>
-          <input
+          <textarea
             autoFocus
             className="edge-rename-input"
             value={edgeEditText}
             aria-label="连线名称"
-            placeholder="出口名…（留空 = 出口 n）"
+            placeholder="连线说明…（Enter 保存，Shift+Enter 换行，留空清除）"
             onChange={(e) => setEdgeEditText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 commitEdgeRename();
               } else if (e.key === 'Escape') {
