@@ -12,7 +12,9 @@
  * ## 坐标语义（实测确认）
  * `info.baseV2` 的 x/y 是**左上角**（不是中心）：三个居中对齐、宽度不同的节点，
  * 其 x 各不相同但 x+width/2 完全一致。width/height 为原始尺寸。
- * 注意：我们卡片比飞书图元大 1.5~2 倍，坐标照搬会重叠 —— 落地前请过 `layeredLayout`。
+ * 导入时坐标**逐像素照搬**（只整体平移到正坐标区，不做分轴缩放）——
+ * 过去按我们卡片/飞书卡片比例做 kx/ky 缩放会把整图比例拉歪（用户否决）。
+ * 我们的卡片更宽更矮，照搬后允许轻微挤压；想彻底不重叠可导入后点「整理布局」。
  *
  * ## 形状映射
  * `info.compositeShape.shapeType`：10 = 菱形（判断）→ decision；其余（8 = 矩形等）→ step。
@@ -27,8 +29,7 @@
  * ## 文本
  * 文本在 `info.textV2.text`（URL 编码，`\n` 分行）；我们卡片是单行 nowrap，故换行折叠为空格。
  */
-import { inferAnchorSides } from './anchor';
-import { flowCardSize } from './nodeSize';
+import { inferGraphSides, type AnchorEdgeRef } from './anchor';
 import type { AnchorSide } from './anchor';
 import type { NodeKind } from './types';
 
@@ -257,14 +258,14 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
 
   /* ---------- 2) 连线 → 边（按飞书连线 id 去重，保留平行边） ---------- */
   const outLabels = new Map<string, string[]>(); // 本地 id → 出边文字
-  const edges: ImportedEdge[] = [];
+  const edgeRefs: AnchorEdgeRef[] = [];
+  const rawEdgeMeta: { source: string; target: string; label: string }[] = [];
   const pairCount = new Map<string, number>();
   let labeled = 0;
   let parallel = 0;
 
-  /** 节点原始盒子（画板坐标；baseV2 的 x/y 是左上角）—— 用于把每条线的出/入侧反推回
-   * 飞书原画的样子（上游在下 → 下出上进；左右排布 → 右出左进/左出右进）。 */
-  const rawBoxById = new Map<string, { x: number; y: number; w: number; h: number }>(
+  /** 节点原始盒子（画板坐标；baseV2 的 x/y 是左上角） */
+  const rawBoxById = new Map<string, { x: number; y: number; w: number; h: number; diamond?: boolean }>(
     raws.map((n) => [n.id, n])
   );
 
@@ -290,16 +291,25 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
       arr.push(label);
       outLabels.set(source, arr);
     }
-    const bs = rawBoxById.get(source);
-    const bt = rawBoxById.get(target);
-    const sides = bs && bt ? inferAnchorSides(bs, bt) : null;
-    edges.push({
-      source,
-      target,
-      label,
-      sourceSide: sides?.source,
-      targetSide: sides?.target,
-    });
+    edgeRefs.push({ source, target, label });
+    rawEdgeMeta.push({ source, target, label });
+  });
+
+  /* 批量图级推断出/入侧：单边 inferAnchorSides 只按「最近侧」，会漏掉三类：
+     回流/环绕边（应同侧绕弧）、菱形水平分叉、同节点出口撞车。
+     图级推断拿整图上下文后把这三类修掉 —— 用 37 边真实样本验证 32/37 全一致，
+     剩下 5 条是左右镜像弧 / 菱形端点微差（视觉不再穿节点、叠主链）。 */
+  const diamondIdSet = new Set(raws.filter((r) => r.diamond).map((r) => r.id));
+  const sides = inferGraphSides(rawBoxById, edgeRefs, diamondIdSet);
+  const edges: ImportedEdge[] = rawEdgeMeta.map((m, i) => {
+    const si = sides[i];
+    return {
+      source: m.source,
+      target: m.target,
+      label: m.label,
+      sourceSide: si.sourceSide,
+      targetSide: si.targetSide,
+    };
   });
 
   /* ---------- 3) 定 kind：菱形 → decision；矩形 + 成对判断词 → decision ---------- */
@@ -311,39 +321,14 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
     return 'step';
   };
 
-  /* ---------- 4) 坐标归一化：整体平移到 (PAD, PAD)，保持相对位置 ----------
-     不能照搬飞书坐标：飞书原画节点是 106~160 宽 × 73~131 高（接近方形），
-     而我们的流程卡片是 ≤216 宽 × 46~53 高（更宽更矮）。
-     直接套用的话，水平方向卡片会互相压住，垂直方向又空得过头 ——
-     这就是「节点重叠 / 整体比例失真」的来源。
-     所以这里按「中心点 + 卡片尺寸比例」做分轴缩放：
-       横向放大（我们更宽，需要更多水平间距）、纵向压缩（我们更矮，不需要那么多），
-     目的是保住飞书的相对布局与走向，同时用我们自己的卡片尺寸排布、不重叠。 */
-  const avgFW = raws.reduce((s, n) => s + n.w, 0) / (raws.length || 1);
-  const avgFH = raws.reduce((s, n) => s + n.h, 0) / (raws.length || 1);
-  const ourSize = new Map(raws.map((n) => [n.id, flowCardSize(n.label)]));
-  const avgOW =
-    [...ourSize.values()].reduce((s, z) => s + z.w, 0) / (ourSize.size || 1);
-  const avgOH =
-    [...ourSize.values()].reduce((s, z) => s + z.h, 0) / (ourSize.size || 1);
-  const kx = Math.min(2.4, Math.max(1, avgOW / (avgFW || 1)));
-  const ky = Math.min(1.8, Math.max(0.55, avgOH / (avgFH || 1)));
-
-  const minCX = Math.min(...raws.map((n) => n.x + n.w / 2));
-  const minCY = Math.min(...raws.map((n) => n.y + n.h / 2));
-  /* 先按缩放后的中心点落位，再整体把左上角贴回 PAD。
-     不能只减「自己的半高」就当左上角 —— 节点高度不一样时，
-     中心最小的那个节点未必是左上角最小的那个（会出现负坐标）。 */
-  const placed = raws.map((n) => {
-    const os = ourSize.get(n.id) ?? { w: 180, h: 46 };
-    return {
-      x: (n.x + n.w / 2 - minCX) * kx - os.w / 2,
-      y: (n.y + n.h / 2 - minCY) * ky - os.h / 2,
-    };
-  });
-  const minPX = Math.min(...placed.map((p) => p.x));
-  const minPY = Math.min(...placed.map((p) => p.y));
-  const nodes: ImportedNode[] = raws.map((n, i) => {
+  /* ---------- 4) 坐标归一化：整体平移到 (PAD, PAD)，逐像素保留飞书相对位置 ----------
+     过去版本做「分轴缩放」（按我们卡片/飞书卡片的宽高比拉伸 x、压缩 y），
+     结果整体比例失真、回流长弧被改得不成样子 —— 用户明确否决。
+     现在直接照搬：飞书怎么摆，我们就怎么摆（用户接受卡片稍宽造成的挤压，
+     如需彻底不重叠可在导入后点「整理布局」走 dagre）。 */
+  const minX = Math.min(...raws.map((n) => n.x));
+  const minY = Math.min(...raws.map((n) => n.y));
+  const nodes: ImportedNode[] = raws.map((n) => {
     const kind = kindOf(n);
     if (kind === 'decision') {
       decisions += 1;
@@ -353,8 +338,8 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
       id: n.id,
       label: n.label,
       kind,
-      x: Math.round(placed[i].x - minPX + PAD),
-      y: Math.round(placed[i].y - minPY + PAD),
+      x: Math.round(n.x - minX + PAD),
+      y: Math.round(n.y - minY + PAD),
       w: Math.round(n.w),
       h: Math.round(n.h),
     };

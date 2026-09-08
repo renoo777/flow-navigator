@@ -113,8 +113,8 @@ export function PasteImportModal({
             onChange={() => setLayout('keep')}
           />
           <span>
-            保留飞书原坐标
-            <em>位置与飞书完全一致，但卡片较大可能互相压住</em>
+            保留飞书原坐标（逐像素）
+            <em>1:1 照搬飞书位置与连线方向；卡片更宽可能轻微挤压，连线不重排</em>
           </span>
         </label>
       </div>

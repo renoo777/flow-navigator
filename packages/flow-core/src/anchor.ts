@@ -107,3 +107,264 @@ export function inferAnchorSides(
 export function isAnchorPinned(data: unknown): boolean {
   return !!(data && typeof data === 'object' && (data as { anchorPinned?: unknown }).anchorPinned);
 }
+
+/* ============================================================
+ * 批量图级推断（飞书粘贴增强）：比单边 inferAnchorSides 多几件事
+ *   1) 判断整图主流向（TB / LR），识别「远回流」边 —— 目标在源
+ *      上游且中心横向有位移（要跨过中间节点绕回）时，飞书画的是
+ *      同侧长弧（都从 left 或都从 right 走），不是最近侧直连。
+ *      裸 inferAnchorSides 会把它们判成 top/bottom 直连，与主链
+ *      重叠、视觉错乱 —— 37 边真值样本里 13 条推断错的根因。
+ *      （注意：同列紧邻的往返回流飞书走 top/bottom 直连，不可误伤）
+ *   2) 判断菱形节点：多条出边按目标水平位置分到左/右尖角，
+ *      而不是全挤「最近侧」（菱形天然水平分叉）。
+ *   3) 环对（A→B 与 B→A 并存）：上下两条往返线分侧，下方那条绕弧，
+ *      否则两条线叠在同一个直连通道上。
+ * ============================================================ */
+export type GraphDirection = 'TB' | 'LR';
+
+/** 词义偏右的（视觉上飞书多绕右侧）：返回/失败/放弃 类 */
+const BACKFLOW_RIGHT_WORDS = ['返回', '失败', '放弃', '退出', '回到', '上一步'];
+
+/** 一个需要参与图级推断的边（source/target 已在 box 集合里） */
+export interface AnchorEdgeRef {
+  source: string;
+  target: string;
+  label: string;
+}
+
+/**
+ * 全图主流向：所有边的中心位移投票。纵向位移更大 → TB，否则 LR。
+ */
+export function inferGraphDirection(
+  boxById: ReadonlyMap<string, AnchorBox>,
+  edges: AnchorEdgeRef[]
+): GraphDirection {
+  let dxs = 0;
+  let dys = 0;
+  for (const e of edges) {
+    const a = boxById.get(e.source);
+    const b = boxById.get(e.target);
+    if (!a || !b) continue;
+    dxs += Math.abs(b.x + b.w / 2 - (a.x + a.w / 2));
+    dys += Math.abs(b.y + b.h / 2 - (a.y + a.h / 2));
+  }
+  return dys > dxs ? 'TB' : 'LR';
+}
+
+const cyOf = (b: AnchorBox) => b.y + b.h / 2;
+const cxOf = (b: AnchorBox) => b.x + b.w / 2;
+
+/** 判定一条边是否为「远回流/环绕」边：
+ *  目标在源的上游方向、且中心横向错位明显（非同一列紧邻直连）。
+ *  语义词表只做弱提示（需目标确实在上游半高以上，防止把同排水平分支误伤）。 */
+export function isFarBackflow(
+  dir: GraphDirection,
+  from: AnchorBox,
+  to: AnchorBox,
+  label: string
+): boolean {
+  const hitWord = BACKFLOW_RIGHT_WORDS.some((w) => label.includes(w));
+  if (dir === 'TB') {
+    /* 目标中心显著高于源中心（至少半高之和的 1/2 抬升） */
+    const lifted = cyOf(to) < cyOf(from) - (from.h + to.h) / 4;
+    if (!lifted) return false;
+    /* 横向错位必须够明显：非同一列（dx 大）或词义提示 */
+    const xGap = Math.abs(cxOf(to) - cxOf(from));
+    const halfSum = (from.w + to.w) / 2;
+    return xGap > halfSum * 0.35 || (hitWord && xGap > halfSum * 0.12);
+  }
+  const shifted = cxOf(to) < cxOf(from) - (from.w + to.w) / 4;
+  if (!shifted) return false;
+  const yGap = Math.abs(cyOf(to) - cyOf(from));
+  const halfH = (from.h + to.h) / 2;
+  return yGap > halfH * 0.35 || (hitWord && yGap > halfH * 0.12);
+}
+
+/** 回流边弧向：词义偏右词 → right，否则 left */
+export function backflowArcSide(label: string): AnchorSide {
+  return BACKFLOW_RIGHT_WORDS.some((w) => label.includes(w)) ? 'right' : 'left';
+}
+
+export interface InferredEdgeSide {
+  sourceSide: AnchorSide;
+  targetSide: AnchorSide;
+  /** 这条边被判定为远回流（绕弧） */
+  backflow: boolean;
+}
+
+/** 两点中心的水平/垂直相对方向（供菱形分叉/环对分侧） */
+const dxOf = (a: AnchorBox, b: AnchorBox) => cxOf(b) - cxOf(a);
+const dyOf = (a: AnchorBox, b: AnchorBox) => cyOf(b) - cyOf(a);
+
+/** 回流/异常语义词：环对中命中者绕弧；直线通道留给无词主链 */
+const LOOP_ABNORMAL_WORDS = ['返回', '失败', '放弃', '退出', '否', '退回', '上一步', '重试'];
+
+/** 直连路径（TB 回流：源底→目标顶之间）是否被中间节点阻挡 */
+function blockedByMiddle(
+  from: AnchorBox,
+  to: AnchorBox,
+  all: ReadonlyMap<string, AnchorBox>,
+  skip: ReadonlySet<string>
+): boolean {
+  const x0 = Math.min(from.x, to.x);
+  const x1 = Math.max(from.x + from.w, to.x + to.w);
+  const y0 = to.y + to.h; // 目标在下界以下（目标在上游时）
+  const y1 = from.y; // 源的上缘
+  const band = { x0, x1, y0, y1 };
+  for (const [id, c] of all) {
+    if (skip.has(id)) continue;
+    /* 与竖直带相交且落在 y0..y1 中间区 */
+    if (c.y + c.h <= y0 + 1 || c.y >= y1 - 1) continue;
+    if (c.x + c.w <= band.x0 + 1 || c.x >= band.x1 - 1) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 图级批量推断每条边的出/入侧（粘贴增强版）。
+ * - 普通顺流边：与 inferAnchorSides 一致（最近侧直连）。
+ * - 远回流边（目标在上游且直连会穿中间节点）：源与目标同侧绕弧。
+ * - 环对（A→B 与 B→A 并存）：异常词那条（或逆流那条）绕弧，直线
+ *   通道留给主链，避免一正一反两条线叠在同一个 top/bottom 通道。
+ * - 菱形节点：出边目标水平主导（|dx| ≥ 1.8|dy|）才从左右尖走，
+ *   正下/正上仍走底/顶（防把「是/成功」下行走线误分到侧边）。
+ * - 同 target 的 top/bottom 入线被多条普通边共享时：后到者挪到水平侧
+ *   （我们每侧只有一个 handle，飞书会自动分散入口）。
+ */
+export function inferGraphSides(
+  boxById: ReadonlyMap<string, AnchorBox>,
+  edges: AnchorEdgeRef[],
+  diamondIds?: ReadonlySet<string>
+): InferredEdgeSide[] {
+  const dir = inferGraphDirection(boxById, edges);
+
+  /* 环对检测：存在反向边 B→A */
+  const directed = new Set(edges.map((e) => `${e.source}>${e.target}`));
+  const hasReverseOf = (src: string, tgt: string) => directed.has(`${tgt}>${src}`);
+
+  /* 每个菱形节点的出边数（分叉用） */
+  const outDeg = new Map<string, number>();
+  for (const e of edges) outDeg.set(e.source, (outDeg.get(e.source) ?? 0) + 1);
+
+  const out = edges.map((e, idx) => {
+    const a = boxById.get(e.source);
+    const b = boxById.get(e.target);
+    if (!a || !b) {
+      return { sourceSide: 'bottom' as AnchorSide, targetSide: 'top' as AnchorSide, backflow: false };
+    }
+    const label = e.label;
+    const abnormal = LOOP_ABNORMAL_WORDS.some((w) => label.includes(w));
+    /* 1) 环对：异常词条绕弧；两条都无词 → 逆流条（目标在上游）绕弧 */
+    if (hasReverseOf(e.source, e.target)) {
+      const meUpward = cyOf(b) < cyOf(a); // 目标在源上方
+      if (abnormal || (!otherHasAbnormal(edges, idx, e, LOOP_ABNORMAL_WORDS) && meUpward)) {
+        const side = backflowArcSide(label);
+        return { sourceSide: side, targetSide: side, backflow: true };
+      }
+    }
+    /* 2) 远回流（目标显著在上游）且直连会穿中间节点 → 同侧绕弧 */
+    if (dir === 'TB' ? cyOf(b) < cyOf(a) - (a.h + b.h) / 4 : cxOf(b) < cxOf(a) - (a.w + b.w) / 4) {
+      const lifted = dir === 'TB' ? cyOf(b) < cyOf(a) - (a.h + b.h) / 4 : true;
+      if (lifted) {
+        const skip = new Set([e.source, e.target]);
+        const blocked = dir === 'TB' ? blockedByMiddle(a, b, boxById, skip) : true;
+        if (blocked) {
+          const side = backflowArcSide(label);
+          return { sourceSide: side, targetSide: side, backflow: true };
+        }
+      }
+    }
+    /* 3) 菱形多出边且目标水平主导 → 左右尖 */
+    const diamond = diamondIds?.has(e.source);
+    const dAbs = Math.abs(dxOf(a, b));
+    const dyAbs = Math.abs(dyOf(a, b));
+    if (diamond && (outDeg.get(e.source) ?? 0) >= 2 && dAbs >= dyAbs * 1.8) {
+      const srcSide: AnchorSide = dxOf(a, b) >= 0 ? 'right' : 'left';
+      const bs = inferAnchorSides(a, b);
+      return { sourceSide: srcSide, targetSide: bs.target, backflow: false };
+    }
+    const s = inferAnchorSides(a, b);
+    return { sourceSide: s.source, targetSide: s.target, backflow: false };
+  });
+
+  /* 第二遍：
+     A) 同 source 的 top/bottom 出边被 ≥2 条非回流边共享 → 组内第一条挪水平侧
+        （按它目标的水平方向定左右），后续保留直连。每侧只有一个 handle，
+        飞书会自动分散出口，真实样本 c2:66/70 都从「返回登录页」向下出，
+        飞书把先画的 c2:66 放到了左缘、后画的 c2:70 保持直下。 */
+  const srcCount = new Map<string, Map<AnchorSide, number>>();
+  out.forEach((o, i) => {
+    if (o.backflow) return;
+    const side = o.sourceSide;
+    if (side !== 'top' && side !== 'bottom') return;
+    if (!srcCount.has(edges[i].source)) srcCount.set(edges[i].source, new Map());
+    const m = srcCount.get(edges[i].source)!;
+    m.set(side, (m.get(side) ?? 0) + 1);
+  });
+  const srcShifted = new Set<string>();
+  for (let i = 0; i < out.length; i += 1) {
+    const e = edges[i];
+    if (out[i].backflow) continue;
+    const side = out[i].sourceSide;
+    if (side !== 'top' && side !== 'bottom') continue;
+    /* 菱形源出边真值允许同 bottom 多线（飞书在菱形底缘错开锚点），不拆 */
+    if (diamondIds?.has(e.source)) continue;
+    const key = `${e.source}@${side}`;
+    const cnt = srcCount.get(e.source)?.get(side) ?? 0;
+    if (cnt > 1 && !srcShifted.has(key)) {
+      srcShifted.add(key);
+      const a = boxById.get(e.source);
+      const b = boxById.get(e.target);
+      if (a && b) {
+        /* 目标在正下/正上（几乎同列）时不硬挪，维持直连 */
+        const nearVertical = Math.abs(dxOf(a, b)) < (a.w + b.w) / 4;
+        if (!nearVertical) out[i].sourceSide = dxOf(a, b) >= 0 ? 'right' : 'left';
+      }
+    }
+  }
+  /* B) 同 target 的 top/bottom 入口被 ≥2 条非回流边共享 → 后到者挪水平侧。
+     真值样本（c2:55/70 都进 o2:45.top）里飞书把第二条放到了 right 尖。 */
+  const usedIn = new Map<string, Set<AnchorSide>>();
+  for (let i = 0; i < out.length; i += 1) {
+    const e = edges[i];
+    if (out[i].backflow) continue;
+    const side = out[i].targetSide;
+    if (side === 'top' || side === 'bottom') {
+      const used = usedIn.get(e.target);
+      if (used?.has(side)) {
+        const free = (['right', 'left'] as AnchorSide[]).find((s) => !used.has(s));
+        if (free) {
+          used.add(free);
+          out[i].targetSide = free;
+          continue;
+        }
+      } else {
+        if (!usedIn.has(e.target)) usedIn.set(e.target, new Set());
+        usedIn.get(e.target)!.add(side);
+      }
+    } else {
+      if (!usedIn.has(e.target)) usedIn.set(e.target, new Set());
+      usedIn.get(e.target)!.add(side);
+    }
+  }
+  return out;
+}
+
+/** 环对另一条是否命中异常词（决定本边是否把绕弧让给对方） */
+function otherHasAbnormal(
+  edges: AnchorEdgeRef[],
+  idx: number,
+  self: AnchorEdgeRef,
+  words: string[]
+): boolean {
+  for (let j = 0; j < edges.length; j += 1) {
+    if (j === idx) continue;
+    const e2 = edges[j];
+    if (e2.source === self.target && e2.target === self.source) {
+      return words.some((w) => e2.label.includes(w));
+    }
+  }
+  return false;
+}
