@@ -25,6 +25,12 @@ export interface AnchorBox {
   y: number;
   w: number;
   h: number;
+  /**
+   * 0918：宽高是否是 RF 实测值（而非兜底默认）。
+   * 导入 / 粘贴的第一帧节点还没测量完，此时按兜底尺寸推断出来的侧边不可信，
+   * 渲染层要改用它自己持久化的侧边（见 FlowCanvas.anchorOf）。
+   */
+  measured?: boolean;
 }
 
 export const ANCHOR_SIDES: AnchorSide[] = ['top', 'right', 'bottom', 'left'];

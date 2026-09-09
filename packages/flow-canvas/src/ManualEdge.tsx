@@ -91,7 +91,10 @@ function ManualEdgeImpl(props: EdgeProps) {
 
   const startChipDrag = useCallback(
     (e: React.PointerEvent) => {
-      if (!props.selected || editing) return;
+      /* 0918 修复：不再要求「先选中连线」。此前未选中时 chip 是 pointer-events:none，
+         用户一拖就等于在拖线身（走线变形），chip 只能跟着线走 —— 主观感受就是
+         「描述只能沿着连线拖」。现在任何状态下都能直接抓着 chip 拖到画布任意位置。 */
+      if (editing) return;
       e.stopPropagation();
       e.preventDefault();
       const startX = e.clientX;
@@ -114,7 +117,7 @@ function ManualEdgeImpl(props: EdgeProps) {
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     },
-    [props.selected, props.id, editing, d0, zoom]
+    [props.id, editing, d0, zoom]
   );
 
   /* 进入编辑时灌一次初值并全选，之后内容交给浏览器管 ——
@@ -225,13 +228,13 @@ function ManualEdgeImpl(props: EdgeProps) {
             style={{
               /* 点2(a)：中点 + 用户拖动偏移（拖动中用本地态，松手后读持久值） */
               transform: `translate(-50%, -50%) translate(${lx + lblOff.dx}px, ${ly + lblOff.dy}px)`,
-              /* 未选中时穿透：否则 chip 会挡住「拖线身改走向」这个高频操作。
-                 选中后才可交互 —— 与飞书「选中连线说明才能拖动 / 编辑」一致。 */
-              pointerEvents: props.selected || editing ? 'all' : 'none',
-              cursor: props.selected && !editing ? (dragOff ? 'grabbing' : 'grab') : undefined,
+              /* 0918：一律可交互 —— 未选中也能直接拖走（此前穿透到线身会让用户
+                 误以为「描述只能沿连线移动」）。拖线身改走向仍可在线的其他位置进行。 */
+              pointerEvents: 'all',
+              cursor: editing ? undefined : dragOff ? 'grabbing' : 'grab',
             }}
             data-testid="edge-chip"
-            title={props.selected ? '拖动调整位置 · 双击编辑连线说明' : undefined}
+            title="拖动调整位置 · 双击编辑连线说明"
             onDoubleClick={(e) => {
               e.stopPropagation();
               setEditing(true);

@@ -118,6 +118,13 @@ export interface FlowCanvasProps {
   onChangeWrapCols: (nodeId: string, cols: number | null) => void;
   /** 点2(a) 连线描述拖动提交（偏移写入 edge.data.labelOffset） */
   onMoveLabel: (edgeId: string, off: { dx: number; dy: number }) => void;
+  /**
+   * 0918：把「当前自动推断出的出入侧」静默回写到数据层（不进撤销历史）。
+   * 未钉住的边原本只在渲染时按节点实测尺寸推断，一导入/粘贴（首帧 measured 未就绪）
+   * 就会退回默认的「下出上进」，用户看到的就是「连线全乱了」。
+   * 固化之后：导出 JSON / 复制都带着侧边信息，任何一次还原都先按原侧渲染。
+   */
+  onSyncEdgeSides?: (pairs: { id: string; sourceHandle: string; targetHandle: string }[]) => void;
   /** Q4 话术编辑入历史快照：TalkEditor 每次「添加/删除/失焦提交」前调用 */
   onTalkEdit?: () => void;
   /** 画布搜索（Build K-④）：定位到某节点（App 实现：选中 + fitView 平移过去） */
@@ -408,6 +415,7 @@ export function FlowCanvas({
   onDeleteNode,
   onChangeWrapCols,
   onMoveLabel,
+  onSyncEdgeSides,
   onTalkEdit,
   onFocusNode,
   commands,
@@ -880,21 +888,43 @@ export function FlowCanvas({
         y: n.position.y,
         w: w > 0 ? w : 180,
         h: h > 0 ? h : 46,
+        /* 0918：measured 是否已就绪。未就绪时（刚导入 / 刚粘贴的第一帧）
+           推断出来的侧边不可信（用的是 180×46 兜底尺寸），必须让位给持久化的侧边。 */
+        measured: w > 0 && h > 0,
       });
     });
     return m;
   }, [nodes]);
 
-  /** 自动锚点：未钉住的边，端点跟着两节点相对位置走（射线求交，等价最短连线） */
+  /** 自动锚点：未钉住的边，端点跟着两节点相对位置走（射线求交，等价最短连线）。
+   *  ok=false 表示两端至少有一个还没实测尺寸 —— 此时调用方应用持久化的侧边兜底。 */
   const anchorOf = useCallback(
-    (source: string, target: string): { source: string; target: string } => {
+    (source: string, target: string): { source: string; target: string; ok: boolean } => {
       const a = anchorBoxes.get(source);
       const b = anchorBoxes.get(target);
-      if (!a || !b) return { source: 'bottom', target: 'top' };
-      return inferAnchorSides(a, b);
+      if (!a || !b) return { source: 'bottom', target: 'top', ok: false };
+      const ok = !!a.measured && !!b.measured;
+      return { ...inferAnchorSides(a, b), ok };
     },
     [anchorBoxes]
   );
+
+  /**
+   * 0918：把当前推断出的侧边静默回写数据层（不进撤销历史）。
+   * 只在实测尺寸就绪时写，否则会把 180×46 兜底算出来的错值固化进文档。
+   */
+  useEffect(() => {
+    if (!onSyncEdgeSides) return;
+    const patch: { id: string; sourceHandle: string; targetHandle: string }[] = [];
+    edges.forEach((e) => {
+      if (isAnchorPinned(e.data)) return; // 用户钉住的边本来就有持久值
+      const s = anchorOf(e.source, e.target);
+      if (!s.ok) return;
+      if (s.source === e.sourceHandle && s.target === e.targetHandle) return;
+      patch.push({ id: e.id, sourceHandle: s.source, targetHandle: s.target });
+    });
+    if (patch.length) onSyncEdgeSides(patch);
+  }, [edges, anchorOf, onSyncEdgeSides]);
 
   /* WP2 拉线合法性（磁吸高亮的"可接/不可接"判定，RF 会据此给目标 handle 挂 valid class）：
      ① 自环 source===target：流程演算会死循环，禁止；
@@ -1265,12 +1295,21 @@ export function FlowCanvas({
       /* 端点选边：钉住过（用户拖过端点 / 导入时自带）就照旧，否则按相对位置自动。
          拖动中相关边先读锁定（dragSideRef），命中则不动 —— 杜绝临界角反复横跳。 */
       const pinned = isAnchorPinned(e.data);
-      const dragging = dragIdsRef.current.has(e.source) || dragIdsRef.current.has(e.target);
+      const inferred = anchorOf(e.source, e.target);
+      const locked = dragSideRef.current.get(e.id);
+      const auto = locked
+        ? { source: locked.source, target: locked.target, ok: inferred.ok }
+        : inferred;
+      /**
+       * 0918：measured 未就绪（刚导入 / 刚粘贴的第一帧）时，自动边改读持久化的侧边
+       * （由 onSyncEdgeSides 在实测就绪后写回），这样还原出来的走向与原图一致，
+       * 而不是按 180×46 兜底尺寸重新推断一次。
+       */
       const sides = pinned
         ? { source: e.sourceHandle ?? 'bottom', target: e.targetHandle ?? 'top' }
-        : dragging
-          ? (dragSideRef.current.get(e.id) ?? anchorOf(e.source, e.target))
-          : anchorOf(e.source, e.target);
+        : auto.ok
+          ? { source: auto.source, target: auto.target }
+          : { source: e.sourceHandle ?? auto.source, target: e.targetHandle ?? auto.target };
       /* 端点自由吸附：{side, t} → 画布坐标（随节点位置 / 尺寸实时换算） */
       const ed0 = (e.data ?? {}) as { sourceAnchor?: unknown; targetAnchor?: unknown };
       const sa = isEdgeAnchor(ed0.sourceAnchor) ? ed0.sourceAnchor : null;

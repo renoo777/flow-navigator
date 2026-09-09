@@ -164,6 +164,7 @@ function EditorScreen() {
     changeKind,
     setWrapCols,
     moveEdgeLabel,
+    syncEdgeSides,
     deleteNodes,
     toggleTheme,
   } = useAppStore();
@@ -526,6 +527,15 @@ function EditorScreen() {
     [setEdgeTypes, setDefaultEdgeType]
   );
 
+  /** 0918：连线说明拖动 —— 只读查看态不落任何改动（chip 视觉上仍可拖，松手回原位） */
+  const handleMoveLabel = useCallback(
+    (edgeId: string, off: { dx: number; dy: number }) => {
+      if (readonly) return;
+      moveEdgeLabel(edgeId, off);
+    },
+    [readonly, moveEdgeLabel]
+  );
+
   const handlePaintSel = useCallback(
     (paint: NodePaint | null) => {
       const ids = useAppStore.getState().nodes.filter((n) => n.selected).map((n) => n.id);
@@ -740,7 +750,8 @@ function EditorScreen() {
           onDeleteSel={deleteSelected}
           onChangeKind={changeKind}
           onChangeWrapCols={setWrapCols}
-          onMoveLabel={moveEdgeLabel}
+          onMoveLabel={handleMoveLabel}
+          onSyncEdgeSides={readonly ? undefined : syncEdgeSides}
           onDeleteNode={(id) => deleteNodes([id])}
           onTalkEdit={mark}
           onFocusNode={handleFocusNode}

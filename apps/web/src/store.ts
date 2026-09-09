@@ -554,6 +554,12 @@ export interface AppState {
   renameEdge: (edgeId: string, label: string) => void;
   /** 点2(a) 连线描述拖动提交：偏移量写入 edge.data.labelOffset（画布坐标） */
   moveEdgeLabel: (edgeId: string, off: { dx: number; dy: number }) => void;
+  /**
+   * 0918：把「自动推断出的连线出入侧」静默落到数据层（不进撤销历史、不弹提示）。
+   * 目的：导出 JSON / 复制 / 保存都带着侧边信息，重新打开（首帧还没测量出节点尺寸）
+   * 时按原侧渲染 —— 否则所有未手动钉住的边会临时退回「下出上进」，看起来就是连线乱了。
+   */
+  syncEdgeSides: (pairs: { id: string; sourceHandle: string; targetHandle: string }[]) => void;
   afterDelete: (removedNodeIds: string[], removedEdgeIds: string[]) => void;
   /** 拖拽连线端点改连（入历史） */
   onReconnect: (oldEdge: Edge, conn: Connection) => void;
@@ -1049,6 +1055,24 @@ export const useAppStore = create<AppState>((set, get) => ({
           : e
       ),
     }));
+  },
+
+  /* 0918：静默写回自动边的出入侧。刻意不走 pushHistory —— 它是渲染结果的镜像，
+     不是用户操作，进历史会让「撤销」多出空步。 */
+  syncEdgeSides: (pairs) => {
+    if (!pairs.length) return;
+    const byId = new Map(pairs.map((p) => [p.id, p]));
+    set((st) => {
+      let changed = false;
+      const edges = st.edges.map((e) => {
+        const p = byId.get(e.id);
+        if (!p) return e;
+        if (p.sourceHandle === e.sourceHandle && p.targetHandle === e.targetHandle) return e;
+        changed = true;
+        return { ...e, sourceHandle: p.sourceHandle, targetHandle: p.targetHandle };
+      });
+      return changed ? { edges } : {};
+    });
   },
 
   afterDelete: (removedNodeIds, removedEdgeIds) =>
