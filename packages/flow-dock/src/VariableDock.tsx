@@ -1,4 +1,5 @@
 /** 左侧 Dock：文档头 · 撤销/重做 · 模式/视图切换 · 变量列表（启用集）· 布局面板 · 动作区 */
+import { useState } from 'react';
 import type {
   Assignments,
   FlowMode,
@@ -16,6 +17,8 @@ const VIEW_OPTIONS: SegOption<FlowView>[] = [
 
 export interface DockProps {
   docName: string;
+  /** 就地改名（Bug3）：双击标题进入编辑，Enter/失焦提交；只读态不提供 */
+  onRename: (name: string) => void;
   nodesCount: number;
   /** 启用变量数（导航展示） */
   varsCount: number;
@@ -94,6 +97,7 @@ function varStatus(
 
 export function VariableDock({
   docName,
+  onRename,
   nodesCount,
   varsCount,
   candidateCount,
@@ -137,6 +141,14 @@ export function VariableDock({
   selectedCount,
 }: DockProps) {
   const editable = !readonly;
+  /** Bug3：双击标题就地改名 —— setDocName 已落库+镜像，这里只补触发点 */
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(docName);
+  const commitRename = () => {
+    setRenaming(false);
+    const clean = renameDraft.trim();
+    if (clean && clean !== docName) onRename(clean);
+  };
   const canPreset = mode === 'scenario' && variables.length > 0;
   const hasAssignments = Object.keys(assignments).length > 0;
   /** 情景动作只在情景导航模式出现 */
@@ -212,9 +224,41 @@ export function VariableDock({
             {theme === 'dark' ? '☀' : '🌙'}
           </button>
         </div>
-        <h1 className="dock-title" title={docName}>
-          {docName}
-        </h1>
+        {renaming ? (
+          <input
+            className="dock-title-input"
+            data-testid="doc-title-input"
+            value={renameDraft}
+            autoFocus
+            maxLength={60}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitRename();
+              else if (e.key === 'Escape') {
+                setRenameDraft(docName);
+                setRenaming(false);
+              }
+            }}
+            aria-label="流程图名称"
+          />
+        ) : (
+          <h1
+            className={`dock-title${editable ? ' renamable' : ''}`}
+            title={editable ? `${docName}（双击重命名）` : docName}
+            data-testid="doc-title"
+            onDoubleClick={
+              editable
+                ? () => {
+                    setRenameDraft(docName);
+                    setRenaming(true);
+                  }
+                : undefined
+            }
+          >
+            {docName}
+          </h1>
+        )}
         <div className="dock-sub">
           {nodesCount} 节点 · {varsCount} 变量
         </div>

@@ -73,6 +73,8 @@ export interface FlowCanvasProps {
   edges: Edge[];
   mode: FlowMode;
   view: FlowView;
+  /** Bug2 渲染校准：切视图渲染稳定后由宿主用 RF 实测尺寸复检重叠 */
+  onViewStabilized?: () => void;
   variables: FlowVariable[];
   scenario: ScenarioResult | null;
   /** 情景导航「全图」视角：true 时保留路线强调，但不压暗路线之外的节点与连线（M1-①） */
@@ -381,6 +383,7 @@ export function FlowCanvas({
   edges,
   mode,
   view,
+  onViewStabilized,
   variables,
   scenario,
   focusAll = false,
@@ -463,6 +466,14 @@ export function FlowCanvas({
   } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const rf = useReactFlow<SopFlowNode, Edge>();
+  /** Bug2 渲染校准：切视图后 RF 实测尺寸（measured）已就绪，交给宿主复检重叠 ——
+   *  estimateNodeSize 对话术卡真实渲染高有低估（fitView 缩放下实测差 ~50px），
+   *  setView 里的纯估算防重叠会残留；无重叠时宿主侧零位移。 */
+  useEffect(() => {
+    if (!onViewStabilized) return;
+    const t = setTimeout(onViewStabilized, 450);
+    return () => clearTimeout(t);
+  }, [view, onViewStabilized]);
   /** WP4 标注指示线 overlay：订阅 RF 视口（zoom/pan 时重画），transform=[x,y,zoom] */
   const viewport = useStore((s) => s.transform);
 

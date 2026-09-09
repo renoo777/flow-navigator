@@ -18,6 +18,7 @@ import {
   deriveVariableCandidates,
   estimateNodeSize,
   layoutGraph,
+  resolveOverlaps,
   resolveVariables,
   suggestScenarioSteps,
   SAMPLE_EDGE_DEFS,
@@ -43,36 +44,6 @@ import { isDesktop, vaultLoad, vaultPath, vaultSave } from './vault';
 
 let uid = 1;
 const nextId = (prefix: string) => `${prefix}${Date.now().toString(36)}${uid++}`;
-
-/**
- * 按指定视图跑一次 dagre，返回 nodeId -> position。
- * 复用于 relayout / localRelayout / setView（首次进入某视图时自动整理）。
- * 注意：布局尺寸必须按 view 走——结构层 h≈46，话术层 h≈rows*40+80，差别数倍。
- */
-function layoutPositions(
-  nodes: SopFlowNode[],
-  edges: Edge[],
-  view: FlowView
-): Map<string, { x: number; y: number }> {
-  /* WP4：dagre 只排流程节点（sop）；自由表达节点（便签/贴图/标注）不参与自动布局 */
-  const coreNodes = nodes
-    .filter((n) => !isExprNode(n))
-    .map((n) => ({
-      id: n.id,
-      type: 'sop' as const,
-      position: { x: 0, y: 0 },
-      data: n.data,
-    }));
-  const coreEdges = edges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: 'step' as const,
-    label: typeof e.label === 'string' ? e.label : '',
-  }));
-  const laid = layoutGraph(coreNodes, coreEdges, view);
-  return new Map(laid.map((n) => [n.id, n.position]));
-}
 
 /** 默认节点文案（US-01：步骤/决策/开始/结束） */
 export const NODE_PLACEHOLDER: Record<NodeKind, string> = {
@@ -217,6 +188,17 @@ function normalizeNode(raw: unknown): SopFlowNode | null {
     Number.isFinite(Number(d.talkW)) && Number(d.talkW) >= TALK_W_MIN
       ? Math.min(TALK_W_MAX, Math.round(Number(d.talkW)))
       : null;
+  /* keep-shape 锁定尺寸必须持久化：飞书导入卡靠 data.size 保形，丢了会在
+     保存/重载后退回文本自适应扁卡、居中失效（v0.1.7 用户实测回归） */
+  const size =
+    d.size &&
+    typeof d.size === 'object' &&
+    Number.isFinite(Number((d.size as Record<string, unknown>).w)) &&
+    Number((d.size as Record<string, unknown>).w) > 0 &&
+    Number.isFinite(Number((d.size as Record<string, unknown>).h)) &&
+    Number((d.size as Record<string, unknown>).h) > 0
+      ? { w: Math.round(Number((d.size as Record<string, unknown>).w)), h: Math.round(Number((d.size as Record<string, unknown>).h)) }
+      : null;
   return {
     id: n.id,
     type: 'sop',
@@ -231,6 +213,7 @@ function normalizeNode(raw: unknown): SopFlowNode | null {
       ...(roles ? { roles } : {}),
       ...(talkDir ? { talkDir } : {}),
       ...(talkW ? { talkW } : {}),
+      ...(size ? { size } : {}),
     },
     selected: false,
   };
@@ -542,6 +525,10 @@ export interface AppState {
   // --- 动作 ---
   setMode: (m: FlowMode) => void;
   setView: (v: FlowView) => void;
+  /** Bug2 渲染校准：切视图后用 RF 实测尺寸（measured）复检重叠并推开 ——
+   *  estimateNodeSize 对话术卡真实渲染高有低估（实测差 ~50px），纯估算防重叠
+   *  在 fitView 缩放等场景会残留；无重叠时零位移。由 FlowCanvas 在 view 稳定后调。 */
+  calibrateViewOverlaps: () => void;
   /** visit：环上第几次经过（pending 时由 scenario.pendingVisits 提供）；缺省=改最后一次决策并截断其后 */
   assign: (nodeId: string, edgeId: string, visit?: number) => void;
   clearAssignments: () => void;
@@ -624,7 +611,7 @@ export interface AppState {
 
 const emptyEditor = {
   docId: null as string | null,
-  docName: '未命名流程',
+  docName: '未命名流程图',
   docGroup: '',
   readonly: false,
   nodes: [] as SopFlowNode[],
@@ -750,10 +737,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMode: (m) => set({ mode: m }),
 
   /**
-   * 切换视图（结构层 ⇄ 话术层）—— Bug2 修复：双视图独立坐标。
+   * 切换视图（结构层 ⇄ 话术层）—— 双视图独立坐标。
    * 旧实现只切标记、共用 position：结构层按 h≈46 布局，切话术后卡片高数倍 → 必然重叠。
-   * 现在：离开旧视图时把坐标存进 posByView[旧]，进入新视图时取 posByView[新]；
-   *       首次进入某视图（无缓存 / 有未布局的新节点）自动跑一次 dagre，保证「一进去就是整理好的」。
+   * 现在：离开旧视图时把坐标存进 posByView[旧]，进入新视图时取 posByView[新]。
+   * Bug2（用户拍板方案 A）：首次进入某视图不再 dagre 全量重排（会把飞书导入的
+   * 原排版整个打掉），改为**继承当前坐标** + resolveOverlaps 最小位移防重叠
+   * （话术层卡片更高，挤压处推开一点点）；想要自动重排手动点「整理布局」。
    */
   setView: (v) =>
     set((st) => {
@@ -767,11 +756,34 @@ export const useAppStore = create<AppState>((set, get) => ({
           [prev]: { x: n.position.x, y: n.position.y },
         },
       }));
-      /** 2) 取档：缺坐标的节点（首次进入 / 新增）→ 用 dagre 在该视图下补齐 */
-      const missing = saved.filter((n) => !n.posByView?.[v]);
-      const posMap = missing.length ? layoutPositions(saved, st.edges, v) : null;
+      /** 2) 取档 + 防重叠校验：缺槽节点（首次进入 / 新增）继承当前坐标；
+       *     已有槽位也重新校验 —— 结构层可能在上次离开后重新整理/拖动过，
+       *     旧槽位会过期（G1 实测：先看话术层 → 结构层重排 → 再切回来，
+       *     槽位还是按旧结构层坐标存的 → 残留重叠）。无重叠时零位移。
+       *     只校验话术层：结构层是用户的原布局（含飞书导入 keep-shape 坐标，
+       *     允许紧凑排布），切回结构层必须逐像素还原，不得被防重叠推挤。 */
+      const srcOf = (n: (typeof saved)[number]) => n.posByView?.[v] ?? n.position;
+      /* gap=48：estimateNodeSize 对话术卡真实渲染高有低估（textarea/边距抖动），
+         12px 间隙不够吸收误差（G1 实测残留 3 对重叠）；48px 与 dagre ranksep
+         的缓冲量级一致，只影响本来就要推开的卡，不动无重叠卡。 */
+      const adjust =
+        v === 'talk'
+          ? resolveOverlaps(
+              saved
+                .filter((n) => !isExprNode(n))
+                .map((n) => {
+                  const { w, h } = estimateNodeSize(
+                    { id: n.id, type: 'sop', position: n.position, data: n.data },
+                    v
+                  );
+                  const src = srcOf(n);
+                  return { id: n.id, x: src.x, y: src.y, w, h };
+                }),
+              48
+            )
+          : null;
       const nodes = saved.map((n) => {
-        const target = n.posByView?.[v] ?? posMap?.get(n.id) ?? n.position;
+        const target = adjust?.get(n.id) ?? srcOf(n);
         return {
           ...n,
           position: target,
@@ -780,6 +792,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       return { view: v, nodes };
     }),
+
+  calibrateViewOverlaps: () => {
+    const st = get();
+    const view = st.view;
+    /* 只校准话术层（结构层是用户原布局，紧凑/重叠都应保留原样） */
+    if (view !== 'talk') return;
+    const boxes = st.nodes
+      .filter((n) => !isExprNode(n))
+      .map((n) => {
+        const mw = n.measured?.width ?? 0;
+        const mh = n.measured?.height ?? 0;
+        const size =
+          mw > 0 && mh > 0
+            ? { w: mw, h: mh }
+            : estimateNodeSize({ id: n.id, type: 'sop', position: n.position, data: n.data }, view);
+        return { id: n.id, x: n.position.x, y: n.position.y, w: size.w, h: size.h };
+      });
+    const adjust = resolveOverlaps(boxes, 16);
+    let changed = false;
+    const nodes = st.nodes.map((n) => {
+      const t = adjust.get(n.id);
+      if (!t || (Math.abs(t.x - n.position.x) < 0.5 && Math.abs(t.y - n.position.y) < 0.5)) return n;
+      changed = true;
+      return { ...n, position: t, posByView: { ...(n.posByView ?? {}), [view]: t } };
+    });
+    if (changed) set({ nodes });
+  },
 
   /**
    * 情景决策（M3）：真源是 steps 有序序列。
@@ -1601,8 +1640,7 @@ if (isBrowser) {
     (window as unknown as Record<string, unknown>).__flowStore = useAppStore;
   }
   /* 关闭/切后台：内容落库 + 立刻刷新文件镜像（退出不等 debounce） */
-  window.addEventListener('beforeunload', () => {
-    flushNow(useAppStore.getState());
+  window.addEventListener('beforeunload', () => {    flushNow(useAppStore.getState());
     void mirrorNow();
   });
   document.addEventListener('visibilitychange', () => {

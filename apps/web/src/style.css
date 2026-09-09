@@ -161,6 +161,14 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .dock-top { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
 .dock-top-spacer { flex: 1; }
 .dock-title { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: 0.2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-title.renamable { cursor: text; }
+/* Bug3：双击标题就地改名 —— 与 .dock-title 同字体，仅补输入态边框 */
+.dock-title-input {
+  margin: 0; font-size: 15px; font-weight: 650; letter-spacing: 0.2px;
+  font-family: inherit; color: inherit; background: var(--panel-2, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--accent); border-radius: 7px; padding: 2px 7px;
+  width: 100%; min-width: 0; outline: none;
+}
 .dock-sub { margin-top: 3px; font-size: 11.5px; color: var(--ink-3); }
 
 /* Bug3a：返回库按钮重做——原「← 库」纯图标+单字过于隐晦，改为箭头+文字的醒目胶囊 */
@@ -1443,7 +1451,9 @@ body::before {
 }
 .canvas-wrap[data-editable="0"] .react-flow__edge { cursor: default; }
 
-.sop-node.chain-miss { opacity: 0.2; filter: saturate(0.3); }
+/* Bug1 交互调整（用户拍板）：点击节点=高亮直接上下游，只加亮不压暗 ——
+   链路外节点保持原亮度（历史版本 chain-miss 会把其他节点压到 0.2、
+   边压到 0.1，观感即「点全图后再点节点其他全灰了」，已删）。 */
 .sop-node.chain-hit {
   box-shadow: 0 0 0 1.5px var(--accent), 0 6px 18px rgba(37, 99, 235, 0.16);
 }
@@ -1452,7 +1462,6 @@ body::before {
 }
 [data-theme='dark'] .sop-node.chain-hit { box-shadow: 0 0 0 1.5px var(--accent), 0 6px 18px rgba(0, 0, 0, 0.45); }
 [data-theme='dark'] .sop-node.chain-root { box-shadow: 0 0 0 2.5px var(--accent), 0 10px 26px rgba(0, 0, 0, 0.5); }
-.react-flow__edge.chain-miss { opacity: 0.1; }
 .react-flow__edge.chain-hit .react-flow__edge-path {
   stroke: var(--accent) !important;
   stroke-width: 2.4 !important;

@@ -106,6 +106,8 @@ function EditorScreen() {
   const {
     docId,
     docName,
+    setDocName,
+    calibrateViewOverlaps,
     readonly,
     nodes,
     edges,
@@ -646,6 +648,7 @@ function EditorScreen() {
     <div className="app">
       <VariableDock
         docName={docName}
+        onRename={setDocName}
         nodesCount={nodes.length}
         varsCount={variables.length}
         candidateCount={candidates.length}
@@ -709,6 +712,7 @@ function EditorScreen() {
           edges={edges}
           mode={mode}
           view={view}
+          onViewStabilized={calibrateViewOverlaps}
           variables={variables}
           scenario={scenario}
           focusAll={focusAll}

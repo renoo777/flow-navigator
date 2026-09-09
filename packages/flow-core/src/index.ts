@@ -10,3 +10,4 @@ export * from './reflow';
 export * from './anchor';
 export * from './edgeRoute';
 export * from './nodeSize';
+export * from './overlap';

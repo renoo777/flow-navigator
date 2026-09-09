@@ -172,8 +172,16 @@ export function computeScenario(
   const pendingVisits: Record<string, number> = {};
   const seenVisits = new Set<string>();
   const stack = [...starters];
-  /* 步数预算：回路上非决策节点会重复经过（打回后重走），允许重复展开；
-     终止靠 ①变量节点的决策序列有限（用完即 pending）②预算兜底无变量纯环。 */
+  /* Bug1 根因修复：非决策节点的重复展开语义按「图里有没有变量」分流 ——
+   * ① 无变量图（或全部停用）：展开结果与首次完全相同，回路重复展开只会
+   *    烧光步数预算 → 遍历提前终止，实测 28 节点板只剩 7 节点活跃、
+   *    出现「边已记亮、箭头指向的节点没亮」。改为每节点至多展开一次。
+   * ② 有变量图：保留重复展开 —— 「打回后重走」必须重新经过非决策节点，
+   *    才能第二次到达回路上的决策点取新决策（engine.test 回路用例）。
+   *    终止由决策序列有限保证，预算仅兜底。 */
+  const hasVars = Object.keys(varByNode).length > 0;
+  /* 步数预算：有变量图上回路非决策节点重复经过（打回后重走），允许重复展开；
+     终止靠 ①变量节点的决策序列有限（用完即 pending）②预算兜底。 */
   const budget = nodes.length * 4 + stack.length * 4 + 128;
   let walked = 0;
   while (stack.length && walked < budget) {
@@ -201,12 +209,16 @@ export function computeScenario(
         }
       });
     } else {
+      if (k > 0 && !hasVars) continue; /* 无变量：重复展开无新信息，纯环必须靠它终止 */
       outs.forEach((e) => {
         activeEdges.add(e.id);
         stack.push(e.target);
       });
     }
   }
+  /* 预算兜底退出时，栈里还压着「活跃边指向、但没走到」的节点 —— 补亮它们，
+     维持不变量「活跃边的 target 必活跃」，杜绝边亮节点不亮的观感断裂（Bug1）。 */
+  while (stack.length) activeNodes.add(stack.pop()!);
   const naVars = variables.filter((v) => !activeNodes.has(v.nodeId));
   /* 回边（拓扑性质，与取值无关）：路径上被走到的回边就是「转了一圈」的那一段 */
   const backIds = findBackEdges(nodes, edges);
