@@ -556,6 +556,10 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
    flex 容器自身居中 + 文本 text-align: center 双保险，
    无论单行/多行/裁切都能视觉居中（编辑态复用同布局，不跳动）。 */
 .sop-node.keep-shape .sop-flow {
+  /* width 必须 100%：外层 .sop-node 是 flex，sop-flow 不撑满的话会收缩成
+     「文字内容宽」，文字只能在收缩盒里居中 → 整体偏在卡片左侧
+     （2026-09-09 真板复现：200px 卡的 sop-flow 只有 72px，标签左偏 64px）。 */
+  width: 100%;
   height: 100%;
   padding: 4px 10px;
   box-sizing: border-box;

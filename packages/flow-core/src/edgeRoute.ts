@@ -660,17 +660,16 @@ function pickSegment(
 }
 
 /**
- * 肘线：把 bend 视为「基础路径上 t 比例处的 vertex 偏移」——
- * bend = { t, dx, dy } 表示在该 vertex 位置叠加 (dx, dy) 平移。
+ * 肘线：把 bend 视为「基础路径上 t 比例处的那一段」的整体平移（v5 段平移，飞书画板同款）。
  *
- * 设计意图（v4 bend-vertex，替代 v3 bend-segment）：
- *  v3 把 bend 当成「段偏移」，拖动时只让该段 ±18% 子段变形（其他段不动），
- *  用户反馈"局部变形、不像在拖整条线"。
- *  v4 改为「vertex 偏移」语义：拖动一个 bend 时，所有 bends 共享同一 (dx, dy)，
- *  每个 bend 把对应的 vertex 同步平移 —— 整条折线跟着 bend 联动。
- *
- * 端点（verts[0]/verts[n-1]）永不参与：stick stub 段由 aSide/bSide 锁死，
- * 起点/终点与节点的衔接方向始终不变。
+ * 设计意图（v5，替代 v4 bend-vertex）：
+ *  v4 把 bend 当「vertex 偏移」且位移带 dx+dy 两个分量 —— 用户斜着拖，
+ *  正交线直接被拽成斜线乱麻（2026-09-09 用户截图实锤），且所有 bend 共享位移
+ *  让端点脱锚。已确认否决。
+ *  v5 语义：拖哪段，哪段**整体**沿其法向平移（法向 = 垂直于段的方向，
+ *  对正交线即水平段的上下 / 垂直段的左右）；段两端各补一节垂直连接线，
+ *  相邻段自动伸长补位；端点（verts[0]/verts[n-1]）永不参与，
+ *  与节点的衔接方向始终不变；任何情况下路径保持严格正交。
  */
 function applyBendOrtho(
   verts: Array<[number, number]>,
@@ -678,20 +677,34 @@ function applyBendOrtho(
 ): { verts: Array<[number, number]>; handle: { x: number; y: number } | null } {
   const pick = pickSegment(verts, bend.t);
   if (!pick) return { verts, handle: null };
-  const { idx, u } = pick;
+  const { idx } = pick;
   /* 跳过首尾 stub 段：endpoints 必须保持与节点的衔接位置不变。 */
   const n = verts.length - 1;
   if (idx === 0 || idx === n - 1) return { verts, handle: null };
   const p0 = verts[idx];
   const p1 = verts[idx + 1];
-  const baseX = p0[0] + (p1[0] - p0[0]) * u;
-  const baseY = p0[1] + (p1[1] - p0[1]) * u;
-  if (Math.abs(bend.dx) < 0.5 && Math.abs(bend.dy) < 0.5) return { verts, handle: null };
-  const newX = baseX + bend.dx;
-  const newY = baseY + bend.dy;
-  const out = verts.slice();
-  out[idx + 1] = [newX, newY];
-  return { verts: out, handle: { x: newX, y: newY } };
+  const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+  if (len < 1e-6) return { verts, handle: null };
+  const ux = (p1[0] - p0[0]) / len;
+  const uy = (p1[1] - p0[1]) / len;
+  const nx = -uy;
+  const ny = ux;
+  /* 位移只取法向分量：沿段自身方向的拖动对正交线没有意义（只会改段长）。 */
+  const d = bend.dx * nx + bend.dy * ny;
+  if (Math.abs(d) < 0.5) return { verts, handle: null };
+  const vx = nx * d;
+  const vy = ny * d;
+  /* 整段平移：p0→p1 替换为 p0 → p0+offset → p1+offset → p1，
+     两端补出来的连接线天然垂直于该段，正交性保持。 */
+  const b0: [number, number] = [p0[0] + vx, p0[1] + vy];
+  const b1: [number, number] = [p1[0] + vx, p1[1] + vy];
+  const out: Array<[number, number]> = [
+    ...verts.slice(0, idx + 1),
+    b0,
+    b1,
+    ...verts.slice(idx + 1),
+  ];
+  return { verts: out, handle: { x: (b0[0] + b1[0]) / 2, y: (b0[1] + b1[1]) / 2 } };
 }
 
 /** 单段三次贝塞尔上的点（基础曲线用） */
@@ -837,14 +850,10 @@ export function bendRoutePath(
     };
   }
 
-  /* 肘线：先算基础正交路径，再逐 bend 偏移 vertex（v4 bend-vertex）。
-     bends 按 t 升序已排好；依次 applyBendOrtho，每个 bend 替换 verts 里 bend.t
-     对应的那一个 vertex ——
-       · 共享 dx/dy 时（拖一个 bend 整条线联动）所有 vertex 同步偏移，整条折线平移；
-       · 不同 dx/dy 时（理论上）每个 bend 独立 vertex，局部变形。
-     注意：当前每段基础路径上的 vertex 数量有限，多次 apply 后后续 bend 可能命中
-     已被替换的 vertex —— 我们在 apply 里加 `if (idx === 0 || idx === n-1) return`
-     保护首尾端点，避免连线脱节点。 */
+  /* 肘线：先算基础正交路径，再逐 bend 做全段平移（v5 段平移，飞书画板同款）。
+     bends 按 t 升序已排好；依次 applyBendOrtho，每个 bend 把 bend.t 命中的那一段
+     整体沿法向推开 —— 段与段相互独立，拖 A 段不影响 B 段；
+     首/尾 stub 段在 apply 里被保护，端点与节点的衔接永远不变。 */
   const base = waypointRoutePath({ ax, ay, aSide, bx, by, bSide, points: [] });
   if (!base) return null;
   let verts = base.verts;

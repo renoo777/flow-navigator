@@ -359,24 +359,29 @@ describe('WP5c 段平移路由（bend）：局部性 + 端点锁定', () => {
     expect(v[1][0]).toBe(100);
   });
 
-  it('肘线：真的被推开了（路径向右凸出），顶点数量不变（v4 vertex 偏移）', () => {
+  it('肘线：真的被推开了（整段向右平移），顶点增加 2 个（v5 段平移）', () => {
     const b0 = waypointRoutePath({ ...base, points: [] })!;
     const r = bendRoutePath('smoothstep', { ...base, bends: [bend(0.5, 200, 0)] })!;
-    /* v4 不再插入新 vertex：bend 直接替换中间 vertex → verts 长度 = 基础路径长度 */
-    expect(r.verts.length).toBe(b0.verts.length);
-    /* 中间 vertex 偏移到 (300, 150) —— 「向右凸出」是真的发生了 */
+    /* v5 段平移：p0→p1 替换为 p0 → p0+offset → p1+offset → p1 → +2 个 vertex */
+    expect(r.verts.length).toBe(b0.verts.length + 2);
+    /* 整段被推到 x=300 —— 「向右凸出」是真的发生了 */
     const maxX = Math.max(...r.verts.map((p) => p[0]));
     expect(maxX).toBeGreaterThan(200);
     expect(r.verts[2][0]).toBe(300);
+    expect(r.verts[3][0]).toBe(300);
   });
 
-  it('肘线：推出的是「按下处的一小段」，不是整段（拐点不贴节点）', () => {
+  it('肘线：整段平移后路径仍严格正交，首尾 stub 端点不动', () => {
     const r = bendRoutePath('smoothstep', { ...base, bends: [bend(0.5, 200, 0)] })!;
-    /* 起点 y=0、stub 到 y=26；凸起的两个顶点之间应保留一段原路（y 明显大于 26） */
-    const ys = r.verts.map((p) => p[1]);
-    const firstBendY = Math.min(...r.verts.filter((p) => p[0] > 200).map((p) => p[1]));
-    expect(firstBendY).toBeGreaterThan(26);
-    expect(ys[1]).toBeLessThanOrEqual(26 + 0.001);
+    const v = r.verts;
+    /* 全路径正交：每段要么垂直要么水平 */
+    for (let i = 0; i < v.length - 1; i++) {
+      expect(v[i][0] === v[i + 1][0] || v[i][1] === v[i + 1][1]).toBe(true);
+    }
+    /* 端点与 stub 段锁死：起点 (100,0)、stub 终点 (100,26)、终点 (100,300) */
+    expect(v[0]).toEqual([100, 0]);
+    expect(v[1]).toEqual([100, 26]);
+    expect(v[v.length - 1]).toEqual([100, 300]);
   });
 
   it('肘线：沿段自身方向的位移被忽略（只取法向分量，保持正交）', () => {

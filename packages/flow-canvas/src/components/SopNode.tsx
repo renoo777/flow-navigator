@@ -1,6 +1,7 @@
 /** 自定义节点：SopNode（结构层 / 话术层双视图 + 双击原地改名 US-04 + 语义/自定义配色 E5 + 话术编辑表单） */
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -15,7 +16,6 @@ import {
   type TalkRoles,
 } from '@flow/core';
 import { KIND_RAIL, KIND_TAG } from '../appearance';
-import { NodeLabelEditor } from './NodeLabelEditor';
 import { DEFAULT_AGENT, DEFAULT_CUST, TalkEditor } from './TalkEditor';
 
 export type SopNodeStatus = 'active' | 'dim' | 'pending';
@@ -167,7 +167,7 @@ export function SopNode({ id, data, selected }: NodeProps) {
     : paintStyle;
 
   /** 双击进入编辑态（受控 data.editing=true；只读 view 模式锁定）。
-   *  记录双击的屏幕坐标，交给编辑器把光标放到点击处 —— 不清空、不全选。 */
+   *  记录双击的屏幕坐标，交给编辑 effect 把光标放到点击处 —— 不清空、不全选。 */
   const [caret, setCaret] = useState<{ x: number; y: number } | null>(null);
   const startEdit = useCallback(
     (e: ReactMouseEvent) => {
@@ -179,10 +179,58 @@ export function SopNode({ id, data, selected }: NodeProps) {
     [locked, editing, id, updateNodeData]
   );
 
-  /** 编辑完成（保存/取消）：清编辑态；保存由 NodeLabelEditor 内 updateNodeData 完成 */
+  /** 编辑完成（保存/取消）：把 span 里的文本写回 store 并清编辑态。
+   *  blur 和 Escape 都会走这里，用 commitRef 防重入。 */
+  const labelRef = useRef<HTMLSpanElement | null>(null);
+  const commitRef = useRef<(() => void) | null>(null);
   const endEdit = useCallback(() => {
-    updateNodeData(id, { editing: false });
-  }, [id, updateNodeData]);
+    const el = labelRef.current;
+    const next = el ? el.innerText.replace(/\n$/, '') : undefined;
+    updateNodeData(id, { ...(next !== undefined && next !== label ? { label: next } : {}), editing: false });
+  }, [id, label, updateNodeData]);
+  commitRef.current = endEdit;
+
+  /** 节点即输入框（飞书式就地编辑）：不换组件、不改布局 —— 同一个 .sop-label
+   *  span 原地切 contentEditable，外观零变化，唯一变化是文字光标出现。
+   *  - 光标落在双击处（caretRangeFromPoint），双击词中改一词不用整段重敲；
+   *  - Enter 换行（plaintext-only），Esc 提交；点外部 = blur = 提交。 */
+  useEffect(() => {
+    const el = labelRef.current;
+    if (!editing || !el) return;
+    el.contentEditable = 'plaintext-only';
+    if (el.contentEditable !== 'plaintext-only') el.contentEditable = 'true';
+    el.focus();
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    let placed = false;
+    if (caret) {
+      const r = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
+        .caretRangeFromPoint?.(caret.x, caret.y);
+      if (r && el.contains(r.startContainer)) {
+        sel?.addRange(r);
+        placed = true;
+      }
+    }
+    if (!placed) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      sel?.addRange(range);
+    }
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        commitRef.current?.();
+      }
+    };
+    el.addEventListener('keydown', onKey);
+    return () => {
+      el.removeEventListener('keydown', onKey);
+      el.contentEditable = 'false';
+    };
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [editing]);
 
   return (
     <div
@@ -271,23 +319,26 @@ export function SopNode({ id, data, selected }: NodeProps) {
       ) : (
         <div
           className="sop-flow"
-          /* nodrag 让 React Flow 不把 mousedown 识别为节点拖拽起点（否则双击会被
-             RF 的拖动系统拦截，浏览器收不到 dblclick）。
-             nopan 同理，避免画布平移抢焦点。 */
+          /* mousedown 一律不外传：非编辑态防 RF 把按下识别成拖动起点（否则
+             dblclick 被拖动系统拦截）；编辑态防拖动打断文字选择。 */
           onDoubleClick={startEdit}
           onMouseDown={(e) => {
-            /* 仅「非编辑态」才阻止 RF 拖动。编辑态里 mouseDown 落在 contenteditable 上
-               由浏览器自己处理，RF 还是会拦截，所以这里还要 stopPropagation。
-               P0：仅在结构层生效，话术层是表单，节点拖动由 RF 自己管。 */
-            if (!editing) e.stopPropagation();
+            e.stopPropagation();
           }}
         >
           {status === 'pending' && <span className="pending-dot" title="待赋值：沿此分支继续导航" />}
-          {editing ? (
-            <NodeLabelEditor nodeId={id} initial={label} onDone={endEdit} caret={caret} />
-          ) : (
-            <span className="sop-label">{label}</span>
-          )}
+          {/* 节点即输入框：编辑态复用同一个 span（key 换名强制重挂载，避免
+              contenteditable 改写 DOM 后 React 持有失效 text node）；
+              外观/类名完全不变，只有文字光标出现。 */}
+          <span
+            key={editing ? 'label-editing' : 'label-static'}
+            ref={labelRef}
+            className="sop-label"
+            data-testid={editing ? 'node-label-editor' : undefined}
+            onBlur={editing ? endEdit : undefined}
+          >
+            {label}
+          </span>
           <span className="sop-sub">{KIND_TAG[kind] || ''}</span>
         </div>
       )}
