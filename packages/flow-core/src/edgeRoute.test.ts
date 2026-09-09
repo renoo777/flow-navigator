@@ -395,6 +395,47 @@ describe('WP5c 段平移路由（bend）：局部性 + 端点锁定', () => {
     }
   });
 
+  it('v6 回归：竖段横移无折返重绘（2026-09-09 用户截图 bug）', () => {
+    /* 截图几何：node7 底部锚 (673,58) → 目标右侧锚 (48,795)，
+       拖中间长竖段 (x=373.5) 向右 145。v5 插点法会「画到旧角点再折返」
+       （新旧段部分重叠，视觉上是悬挂横线）；v6 角点跟随必须无折返。 */
+    const src = { ax: 673, ay: 58, aSide: 'bottom', bx: 48, by: 795, bSide: 'right' } as const;
+    const r = bendRoutePath('smoothstep', { ...src, bends: [bend(0.55, -145, 0)] })!;
+    const v = r.verts;
+    /* 严格正交 */
+    for (let i = 0; i + 1 < v.length; i++) {
+      expect(v[i][0] === v[i + 1][0] || v[i][1] === v[i + 1][1]).toBe(true);
+    }
+    /* 无折返：连续三点不得在同一轴上方向反转 */
+    for (let i = 0; i + 2 < v.length; i++) {
+      const ax = v[i + 1][0] - v[i][0], ay = v[i + 1][1] - v[i][1];
+      const bx = v[i + 2][0] - v[i + 1][0], by = v[i + 2][1] - v[i + 1][1];
+      const revH = ax !== 0 && bx !== 0 && ax * bx < 0;
+      const revV = ay !== 0 && by !== 0 && ay * by < 0;
+      expect(revH || revV).toBe(false);
+    }
+    /* 端点钉死 */
+    expect(v[0]).toEqual([673, 58]);
+    expect(v[v.length - 1]).toEqual([48, 795]);
+    /* 角点跟随：竖段整体移到 228.5（373.5-145），旧位置 373.5 不再出现竖段 */
+    const xs = v.map((p) => p[0]);
+    expect(xs).toContain(228.5);
+    expect(xs).not.toContain(373.5);
+  });
+
+  it('v6 回归：拖过目标锚点后 Z 形折叠仍连通正交（方向反转只允许出现在锚点邻域）', () => {
+    /* 竖线 x=744 拖到 904，越过目标左锚 817.9 → 底部合法折叠；
+       折叠后路径必须仍正交、连通、端点钉死。 */
+    const src = { ax: 670.5, ay: 101, aSide: 'right', bx: 817.9, by: 481.2, bSide: 'left' } as const;
+    const r = bendRoutePath('smoothstep', { ...src, bends: [bend(0.5, 160, 0)] })!;
+    const v = r.verts;
+    for (let i = 0; i + 1 < v.length; i++) {
+      expect(v[i][0] === v[i + 1][0] || v[i][1] === v[i + 1][1]).toBe(true);
+    }
+    expect(v[0]).toEqual([670.5, 101]);
+    expect(v[v.length - 1]).toEqual([817.9, 481.2]);
+  });
+
   it('曲线：首末控制点方向锁定为节点法向（拖中间不改两端切线）', () => {
     const r = bendRoutePath('default', { ...base, bends: [bend(0.5, 200, 0)] })!;
     const nums = r.d.match(/-?\d+(\.\d+)?/g)!.map(Number);

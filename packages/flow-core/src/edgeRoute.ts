@@ -660,16 +660,48 @@ function pickSegment(
 }
 
 /**
- * 肘线：把 bend 视为「基础路径上 t 比例处的那一段」的整体平移（v5 段平移，飞书画板同款）。
+ * 合并共线顶点（正交路径化简）：
+ *  - keepStubEnds=true（bend 应用前）：保留 verts[1]/verts[len-2] 两个 stub 边界 ——
+ *    直线路径（全程共线）不塌缩，t 映射与「垂直出/进」stub 语义不受影响；
+ *  - keepStubEnds=false（bend 应用后）：共线点一律丢，包括回头点 ——
+ *    角点平移越过 stub 边界时留下的折返链（如 …→[740]→[796]→[770]，回头）
+ *    被化简成直接的 Z 形连接，视觉上就是飞书的「拖过节点后折叠」。
+ */
+function mergeCollinear(
+  verts: Array<[number, number]>,
+  keepStubEnds: boolean
+): Array<[number, number]> {
+  if (verts.length <= 2) return verts;
+  const out: Array<[number, number]> = [verts[0]];
+  for (let i = 1; i + 1 < verts.length; i++) {
+    if (keepStubEnds && (i === 1 || i === verts.length - 2)) {
+      out.push(verts[i]);
+      continue;
+    }
+    const a = out[out.length - 1];
+    const p = verts[i];
+    const b = verts[i + 1];
+    const cross = (p[0] - a[0]) * (b[1] - p[1]) - (p[1] - a[1]) * (b[0] - p[0]);
+    /* 共线（含回头）一律丢：回头点丢掉后 a→b 直连，正好是 Z 形折叠 */
+    if (Math.abs(cross) > 1e-6) out.push(p);
+  }
+  out.push(verts[verts.length - 1]);
+  return out;
+}
+
+/**
+ * 肘线：把 bend 视为「基础路径上 t 比例处的那一段」的整体平移（v6 段平移+角点跟随）。
  *
- * 设计意图（v5，替代 v4 bend-vertex）：
- *  v4 把 bend 当「vertex 偏移」且位移带 dx+dy 两个分量 —— 用户斜着拖，
- *  正交线直接被拽成斜线乱麻（2026-09-09 用户截图实锤），且所有 bend 共享位移
- *  让端点脱锚。已确认否决。
- *  v5 语义：拖哪段，哪段**整体**沿其法向平移（法向 = 垂直于段的方向，
- *  对正交线即水平段的上下 / 垂直段的左右）；段两端各补一节垂直连接线，
- *  相邻段自动伸长补位；端点（verts[0]/verts[n-1]）永不参与，
- *  与节点的衔接方向始终不变；任何情况下路径保持严格正交。
+ * 历史：
+ *  v4 vertex 偏移（所有 bend 共享位移+斜向分量）→ 正交线被拽成斜线乱麻，用户否决。
+ *  v5 插点法（保留旧角点 p0/p1、插入 p0+n·d / p1+n·d）→ 拖竖段横移时路径
+ *     「先画到旧角点、再折返回新位置」，新旧段部分重叠（2026-09-09 用户截图
+ *     实锤：顶部出现悬挂/重叠横线）。已否决。
+ *  v6 语义（真正的飞书式段平移）：拖哪段，**段连同它的两个角点一起沿法向平移**，
+ *     相邻段自动伸长/缩短补位——不插点、无折返、路径顶点数不变；
+ *     例外：邻段与被拖段共线时（直线中段贴 stub）在角点旁分裂插点成 Z 形，
+ *     保证 stub「垂直出线/进节点」永不变形；
+ *     拖过节点位置时允许 Z 形折叠，但任何情况下严格正交、端点钉死。
  */
 function applyBendOrtho(
   verts: Array<[number, number]>,
@@ -694,16 +726,26 @@ function applyBendOrtho(
   if (Math.abs(d) < 0.5) return { verts, handle: null };
   const vx = nx * d;
   const vy = ny * d;
-  /* 整段平移：p0→p1 替换为 p0 → p0+offset → p1+offset → p1，
-     两端补出来的连接线天然垂直于该段，正交性保持。 */
+  /* 角点跟随 + 共线分裂（混合）：
+     - 邻段方向 ∥ 位移 v → 角点直接平移，邻段沿自身轴向伸长/缩短补位（主流场景）；
+     - 邻段与被拖段共线（⊥ v，典型：直线路径中段贴着 stub）→ 保留原角点、
+       在角点旁插入新拐点，形成 Z 形 —— 保证 stub「垂直出线/进节点」永不变形。 */
   const b0: [number, number] = [p0[0] + vx, p0[1] + vy];
   const b1: [number, number] = [p1[0] + vx, p1[1] + vy];
-  const out: Array<[number, number]> = [
-    ...verts.slice(0, idx + 1),
-    b0,
-    b1,
-    ...verts.slice(idx + 1),
-  ];
+  const cross = (ax: number, ay: number) => Math.abs(ax * vy - ay * vx);
+  const prev = verts[idx - 1];
+  const next = verts[idx + 2];
+  const leftParallel = prev ? cross(p0[0] - prev[0], p0[1] - prev[1]) < 1e-6 : true;
+  const rightParallel = next ? cross(next[0] - p1[0], next[1] - p1[1]) < 1e-6 : true;
+  const out = verts.slice();
+  if (leftParallel) out[idx] = b0;
+  if (rightParallel) out[idx + 1] = b1;
+  if (!leftParallel || !rightParallel) {
+    const ins: Array<[number, number]> = [];
+    if (!leftParallel) ins.push(b0);
+    if (!rightParallel) ins.push(b1);
+    out.splice(idx + 1, 0, ...ins);
+  }
   return { verts: out, handle: { x: (b0[0] + b1[0]) / 2, y: (b0[1] + b1[1]) / 2 } };
 }
 
@@ -850,17 +892,19 @@ export function bendRoutePath(
     };
   }
 
-  /* 肘线：先算基础正交路径，再逐 bend 做全段平移（v5 段平移，飞书画板同款）。
-     bends 按 t 升序已排好；依次 applyBendOrtho，每个 bend 把 bend.t 命中的那一段
-     整体沿法向推开 —— 段与段相互独立，拖 A 段不影响 B 段；
-     首/尾 stub 段在 apply 里被保护，端点与节点的衔接永远不变。 */
+  /* 肘线：先算基础正交路径，再逐 bend 做段平移 + 角点跟随（v6，飞书画板同款）。
+     bends 按 t 升序已排好；依次 applyBendOrtho；
+     首/尾 stub 段在 apply 里被保护，端点与节点的衔接永远不变。
+     基础路径先做共线合并：waypointRoutePath 可能输出同轴连续顶点
+     （如 …→[885,781]→[796,781]→[770,781]），不合并的话角点平移后
+     尾巴方向反转 → 折返重叠（2026-09-09 用户截图 bug 的第二个根因）。 */
   const base = waypointRoutePath({ ax, ay, aSide, bx, by, bSide, points: [] });
   if (!base) return null;
-  let verts = base.verts;
+  let verts = mergeCollinear(base.verts, true);
   const handles: Array<{ x: number; y: number }> = [];
   for (const b of bends) {
     const r = applyBendOrtho(verts, b);
-    verts = r.verts;
+    verts = mergeCollinear(r.verts, false);
     if (r.handle) handles.push(r.handle);
   }
   const d = roundedOrthoD(verts);
