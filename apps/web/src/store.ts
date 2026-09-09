@@ -552,8 +552,8 @@ export interface AppState {
   /** WP4：新建自由表达节点（便签 note / 贴图 image / 标注 label），入历史并进入编辑态 */
   addExprNode: (type: ExprType, x: number, y: number) => void;
   renameEdge: (edgeId: string, label: string) => void;
-  /** 点2(a) 连线描述拖动提交：偏移量写入 edge.data.labelOffset（画布坐标） */
-  moveEdgeLabel: (edgeId: string, off: { dx: number; dy: number }) => void;
+  /** 0918 二修：连线描述拖动提交：沿线比例 t∈[0,1] 写入 edge.data.labelT */
+  moveEdgeLabel: (edgeId: string, t: number, opts?: { silent?: boolean }) => void;
   /**
    * 0918：把「自动推断出的连线出入侧」静默落到数据层（不进撤销历史、不弹提示）。
    * 目的：导出 JSON / 复制 / 保存都带着侧边信息，重新打开（首帧还没测量出节点尺寸）
@@ -1043,17 +1043,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  /** 点2(a) 连线描述拖动：把 chip 拖离线中点的偏移量（画布坐标）写进 edge.data。
-   *  normalizeEdge 对 data 整体透传 → 免费获得持久化；拖完一次性提交（拖动过程
-   *  用组件本地态渲染，不进历史）。 */
-  moveEdgeLabel: (edgeId, off) => {
-    pushHistory();
+  /** 0918 二修：连线描述拖动 —— 只记「沿线比例 t∈[0,1]」（chip 贴在线上滑动），
+   *  不再记自由偏移。写进 edge.data.labelT（normalizeEdge 透传 data → 免费持久化）；
+   *  拖动过程用组件本地态渲染，松手一次性提交。老字段 labelOffset 顺手清掉。 */
+  moveEdgeLabel: (edgeId, t, opts) => {
+    if (!opts?.silent) pushHistory();
     set((st) => ({
-      edges: st.edges.map((e) =>
-        e.id === edgeId
-          ? { ...e, data: { ...(e.data ?? {}), labelOffset: off } }
-          : e
-      ),
+      edges: st.edges.map((e) => {
+        if (e.id !== edgeId) return e;
+        const d: Record<string, unknown> = { ...(e.data ?? {}) };
+        delete d.labelOffset;
+        d.labelT = t;
+        return { ...e, data: d };
+      }),
     }));
   },
 

@@ -116,8 +116,9 @@ export interface FlowCanvasProps {
   onDeleteNode: (nodeId: string) => void;
   /** 点1 每行字数换行规则：cols=null 表示关闭（恢复自动换行） */
   onChangeWrapCols: (nodeId: string, cols: number | null) => void;
-  /** 点2(a) 连线描述拖动提交（偏移写入 edge.data.labelOffset） */
-  onMoveLabel: (edgeId: string, off: { dx: number; dy: number }) => void;
+  /** 0918 二修：连线描述拖动提交（沿线比例 t∈[0,1] 写入 edge.data.labelT）。
+   *  opts.silent = 老数据迁移用，不进撤销历史。 */
+  onMoveLabel: (edgeId: string, t: number, opts?: { silent?: boolean }) => void;
   /**
    * 0918：把「当前自动推断出的出入侧」静默回写到数据层（不进撤销历史）。
    * 未钉住的边原本只在渲染时按节点实测尺寸推断，一导入/粘贴（首帧 measured 未就绪）
@@ -1343,7 +1344,11 @@ export function FlowCanvas({
           _lblActive: act ? active : false,
           _lblDim: !!dim,
           _chain: chainCls === 'chain-hit' ? ('hit' as const) : chainCls === 'chain-miss' ? ('miss' as const) : undefined,
-          /* 点2(a) 拖动偏移：持久化在 edge.data.labelOffset（normalizeEdge 透传 data） */
+          /* 0918 二修：说明位置 = 连线上的弧长比例（edge.data.labelT）。
+             旧文档的 labelOffset（自由偏移）仍带进来，由 ManualEdge 现场迁移成 labelT。 */
+          ...(typeof (e.data as { labelT?: number } | null)?.labelT === 'number'
+            ? { _lblT: (e.data as { labelT: number }).labelT }
+            : {}),
           ...((e.data as { labelOffset?: { dx: number; dy: number } } | null)?.labelOffset
             ? { _lblOff: (e.data as { labelOffset: { dx: number; dy: number } }).labelOffset }
             : {}),

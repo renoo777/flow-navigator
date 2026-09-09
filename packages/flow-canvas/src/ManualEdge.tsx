@@ -21,14 +21,14 @@
  * 这些边就永远没有端点手柄可用（用户得先拖出折点才能调端点，不合理）。
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
   getSmoothStepPath,
   getStraightPath,
-  useStore,
+  useReactFlow,
   type EdgeProps,
   Position,
 } from '@xyflow/react';
@@ -68,12 +68,15 @@ interface ManualEdgeData {
   _lblDim?: boolean;
   /** 点2(b) 自动亮暗：链路追踪结果（FlowCanvas 从 chain 类名推导传入） */
   _chain?: 'hit' | 'miss';
-  /** 点2(a) 拖动偏移（画布坐标，相对线中点；持久化在 edge.data.labelOffset） */
+  /** 0918 二修：说明在连线上的位置 = 弧长比例 0~1（持久化在 edge.data.labelT）。
+   *  存「沿线比例」而不是自由偏移 —— chip 必须贴在线上，只允许沿线滑动。 */
+  _lblT?: number;
+  /** 旧版自由偏移（edge.data.labelOffset）—— 仅用于一次性迁移到 _lblT，之后不再写 */
   _lblOff?: { dx: number; dy: number };
   /** 标签改名回调（由 FlowCanvas 注入；函数字段不参与持久化） */
   _onRename?: (edgeId: string, text: string) => void;
-  /** 点2(a) 拖动提交回调（由 FlowCanvas 注入） */
-  _onMoveLabel?: (edgeId: string, off: { dx: number; dy: number }) => void;
+  /** 0918 二修：拖动提交（写 labelT）。silent = 迁移用，不进撤销历史 */
+  _onMoveLabel?: (edgeId: string, t: number, opts?: { silent?: boolean }) => void;
 }
 
 function ManualEdgeImpl(props: EdgeProps) {
@@ -84,40 +87,92 @@ function ManualEdgeImpl(props: EdgeProps) {
   const labelText = typeof props.label === 'string' ? props.label : '';
   const [editing, setEditing] = useState(false);
   const chipRef = useRef<HTMLSpanElement>(null);
-  /* 点2(a) 拖动中的偏移用本地态渲染（跟手、不进历史），pointerup 一次性提交。
-     zoom 用于把屏幕位移换算成画布位移（chip 定位在画布坐标系）。 */
-  const zoom = useStore((s) => s.transform[2]);
-  const [dragOff, setDragOff] = useState<{ dx: number; dy: number } | null>(null);
+  /* 0918 二修：chip 只能「沿线滑动」—— 拖动时把光标投影到连线路径上取最近点，
+     位置以「弧长比例 t」持久化（edge.data.labelT），而不是相对中点的自由偏移。
+     这样 chip 永远贴在连线上，拖多远都不会跑到两个节点之外。 */
+  const rf = useReactFlow();
+  const wrapRef = useRef<SVGGElement>(null);
+  /** 拖动中的本地坐标（跟手、不进历史），松手后由持久 labelT 接管 */
+  const [dragPt, setDragPt] = useState<{ x: number; y: number } | null>(null);
+  /** 静止态下按持久 t 算出的坐标（path 变化 → 重算，节点挪了 chip 也跟着走） */
+  const [restPt, setRestPt] = useState<{ x: number; y: number } | null>(null);
+  const draggingRef = useRef(false);
+  const lblT = typeof d0._lblT === 'number' && Number.isFinite(d0._lblT) ? d0._lblT : undefined;
+  const lblOff = d0._lblOff;
+
+  const pathEl = useCallback((): SVGPathElement | null => {
+    const g = wrapRef.current;
+    if (!g) return null;
+    return g.querySelector('path.react-flow__edge-path') as SVGPathElement | null;
+  }, []);
+
+  /** 把画布坐标投影到连线路径：粗采样找最近段 → 三分法细化 → 返回 {t, x, y} */
+  const projectOnPath = useCallback(
+    (fx: number, fy: number) => {
+      const p = pathEl();
+      if (!p) return null;
+      const total = p.getTotalLength();
+      if (!total) return null;
+      const d2 = (l: number) => {
+        const q = p.getPointAtLength(l);
+        return (q.x - fx) * (q.x - fx) + (q.y - fy) * (q.y - fy);
+      };
+      const N = 48;
+      let best = 0;
+      let bestD = Infinity;
+      for (let i = 0; i <= N; i++) {
+        const l = (total * i) / N;
+        const dd = d2(l);
+        if (dd < bestD) {
+          bestD = dd;
+          best = l;
+        }
+      }
+      /* 在 ±1 段内三分收敛（12 次 → 精度 ≈ total/48/2^6，远小于 1px） */
+      let lo = Math.max(0, best - total / N);
+      let hi = Math.min(total, best + total / N);
+      for (let k = 0; k < 12; k++) {
+        const m1 = lo + (hi - lo) / 3;
+        const m2 = hi - (hi - lo) / 3;
+        if (d2(m1) < d2(m2)) hi = m2;
+        else lo = m1;
+      }
+      /* 端点留 5% 余量：chip 不该糊在节点边框上 */
+      const t = Math.min(0.95, Math.max(0.05, (lo + hi) / 2 / total));
+      const q = p.getPointAtLength(t * total);
+      return { t, x: q.x, y: q.y };
+    },
+    [pathEl]
+  );
 
   const startChipDrag = useCallback(
     (e: React.PointerEvent) => {
-      /* 0918 修复：不再要求「先选中连线」。此前未选中时 chip 是 pointer-events:none，
-         用户一拖就等于在拖线身（走线变形），chip 只能跟着线走 —— 主观感受就是
-         「描述只能沿着连线拖」。现在任何状态下都能直接抓着 chip 拖到画布任意位置。 */
+      /* 0918：不再要求「先选中连线」。此前未选中时 chip 是 pointer-events:none，
+         用户一拖就等于在拖线身（走线变形），chip 只能跟着线走。现在任何状态下都能
+         直接抓着 chip 拖 —— 且只能沿连线滑动（投影），不会掉出连线之外。 */
       if (editing) return;
       e.stopPropagation();
       e.preventDefault();
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const base = d0._lblOff ?? { dx: 0, dy: 0 };
-      let last = base;
+      draggingRef.current = true;
+      let last: number | null = null;
       const onMove = (ev: PointerEvent) => {
-        last = {
-          dx: base.dx + (ev.clientX - startX) / zoom,
-          dy: base.dy + (ev.clientY - startY) / zoom,
-        };
-        setDragOff(last);
+        const f = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
+        const pr = projectOnPath(f.x, f.y);
+        if (!pr) return;
+        last = pr.t;
+        setDragPt({ x: pr.x, y: pr.y });
       };
       const onUp = () => {
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
-        setDragOff(null);
-        d0._onMoveLabel?.(props.id, last);
+        draggingRef.current = false;
+        setDragPt(null);
+        if (last !== null) d0._onMoveLabel?.(props.id, last);
       };
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     },
-    [props.id, editing, d0, zoom]
+    [props.id, editing, d0, rf, projectOnPath]
   );
 
   /* 进入编辑时灌一次初值并全选，之后内容交给浏览器管 ——
@@ -203,20 +258,50 @@ function ManualEdgeImpl(props: EdgeProps) {
     else [path, lx, ly] = getSmoothStepPath({ ...pp, borderRadius: 10 });
   }
 
-  /* chip 最终偏移：拖动中用本地态，静止用持久值，都没有 = 线中点 */
-  const lblOff = dragOff ?? d0._lblOff ?? { dx: 0, dy: 0 };
+  /* 静止态定位：持久 labelT → 路径上取点；没有 labelT 就用（旧）线中点 lx/ly。
+     旧文档只有自由偏移 labelOffset（0918 首版）→ 现场投影成 t 并静默回写一次，
+     之后就统一按 labelT 走（老图不会「一键归位」到中点）。 */
+  useLayoutEffect(() => {
+    if (draggingRef.current) return;
+    if (lblT !== undefined) {
+      const p = pathEl();
+      const total = p?.getTotalLength() ?? 0;
+      if (!p || !total) return;
+      const t = Math.min(0.95, Math.max(0.05, lblT));
+      const q = p.getPointAtLength(t * total);
+      setRestPt((prev) =>
+        prev && Math.abs(prev.x - q.x) < 0.5 && Math.abs(prev.y - q.y) < 0.5 ? prev : { x: q.x, y: q.y }
+      );
+      return;
+    }
+    if (lblOff) {
+      const pr = projectOnPath(lx + lblOff.dx, ly + lblOff.dy);
+      if (pr) {
+        setRestPt({ x: pr.x, y: pr.y });
+        d0._onMoveLabel?.(props.id, pr.t, { silent: true });
+        return;
+      }
+    }
+    setRestPt(null);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [path, lblT, lblOff, lx, ly]);
+
+  /* chip 最终坐标：拖动中跟手 → 静止按 labelT → 都没有 = 线中点（旧行为） */
+  const chipPt = dragPt ?? restPt ?? { x: lx, y: ly };
 
   return (
     <>
-      <BaseEdge
-        id={props.id}
-        path={path}
-        markerEnd={props.markerEnd}
-        markerStart={props.markerStart}
-        style={props.style}
-        /* 加宽命中带：2px 的线不该只有 2px 的可抓范围 */
-        interactionWidth={props.interactionWidth ?? 26}
-      />
+      <g ref={wrapRef}>
+        <BaseEdge
+          id={props.id}
+          path={path}
+          markerEnd={props.markerEnd}
+          markerStart={props.markerStart}
+          style={props.style}
+          /* 加宽命中带：2px 的线不该只有 2px 的可抓范围 */
+          interactionWidth={props.interactionWidth ?? 26}
+        />
+      </g>
       {labelText && (
         <EdgeLabelRenderer>
           <div
@@ -224,17 +309,18 @@ function ManualEdgeImpl(props: EdgeProps) {
               editing ? ' is-editing' : ''
             }${d0._lblDim ? ' is-dim' : ''}${
               d0._chain === 'hit' ? ' is-hit' : d0._chain === 'miss' ? ' is-miss' : ''
-            }${dragOff ? ' is-dragging' : ''}`}
+            }${dragPt ? ' is-dragging' : ''}`}
             style={{
-              /* 点2(a)：中点 + 用户拖动偏移（拖动中用本地态，松手后读持久值） */
-              transform: `translate(-50%, -50%) translate(${lx + lblOff.dx}px, ${ly + lblOff.dy}px)`,
-              /* 0918：一律可交互 —— 未选中也能直接拖走（此前穿透到线身会让用户
-                 误以为「描述只能沿连线移动」）。拖线身改走向仍可在线的其他位置进行。 */
+              /* 0918 二修：坐标直接取「连线上的投影点」—— chip 永远贴在线上，
+                 只能前后滑动，拖不出这条线（此前是中点+自由偏移，能拖到画布任何地方）。 */
+              transform: `translate(-50%, -50%) translate(${chipPt.x}px, ${chipPt.y}px)`,
+              /* 一律可交互 —— 未选中也能直接拖（此前穿透到线身会让用户误以为
+                 「描述只能沿连线移动」）。拖线身改走向仍可在线的其他位置进行。 */
               pointerEvents: 'all',
-              cursor: editing ? undefined : dragOff ? 'grabbing' : 'grab',
+              cursor: editing ? undefined : dragPt ? 'grabbing' : 'grab',
             }}
             data-testid="edge-chip"
-            title="拖动调整位置 · 双击编辑连线说明"
+            title="沿连线拖动调整位置 · 双击编辑连线说明"
             onDoubleClick={(e) => {
               e.stopPropagation();
               setEditing(true);
