@@ -47,6 +47,34 @@ export interface ImportedNode {
   h: number;
 }
 
+/**
+ * 飞书连线线型（对应剪贴板 connectorV2.shape）。
+ *
+ * 枚举语义由真实样本数据自证（ecom-real 62 条 + acct 62 条）：
+ *   shape=0 → 44 条全部无折点、无贝塞尔控制点            → 直线
+ *   shape=1 → 39/46 条带正交折点、从未出现曲线控制点      → 肘线
+ *   shape=2 → 34 条全部带 curveFrom/curveTo 贝塞尔控制点  → 曲线
+ * 注意：老版本飞书（o2 精简负载，如 real28 样本）的 connectorV2 只有
+ * startObject/endObject/captions 三个键，没有 shape —— 此时为 undefined，
+ * 导入端按所选样式兜底（默认肘线）。
+ */
+export type FeishuEdgeShape = 'straight' | 'elbow' | 'curve';
+
+/** canvas 侧可渲染的线型 id（与 PasteImportModal 的选项一致） */
+export type CanvasEdgeType = 'straight' | 'smoothstep' | 'default';
+
+/** 飞书线型 → 我们的渲染线型
+ *  · 直线 → straight（两点直连）
+ *  · 肘线 → smoothstep（圆角折线，最接近飞书肘线观感）
+ *  · 曲线 → default（贝塞尔）
+ *  飞书肘线的 turningPoints 绝对折点本轮不还原（坐标系未验透），
+ *  smoothstep 由出入侧自动生成折线，走向与飞书大体一致。 */
+export function shapeToEdgeType(shape: FeishuEdgeShape | undefined): CanvasEdgeType {
+  if (shape === 'straight') return 'straight';
+  if (shape === 'curve') return 'default';
+  return 'smoothstep';
+}
+
 /** 解析出的连线（source/target 为 ImportedNode.id） */
 export interface ImportedEdge {
   source: string;
@@ -56,6 +84,8 @@ export interface ImportedEdge {
   sourceSide?: AnchorSide;
   /** 按飞书原始坐标推断的「入线侧」 */
   targetSide?: AnchorSide;
+  /** 飞书原始线型；老剪贴板无 shape 字段时为 undefined */
+  shape?: FeishuEdgeShape;
 }
 
 export interface ImportStats {
@@ -69,6 +99,10 @@ export interface ImportStats {
   parallel: number;
   /** 判断形态但出边不足 2 条、因而不会成为变量的节点数（导入后提示用户补线） */
   weak: number;
+  /** 带线型字段（connectorV2.shape）的连线数 —— 0 = 该剪贴板不含线型信息 */
+  shaped: number;
+  /** 各线型条数，供导入弹窗提示「检测到 N 种线型」 */
+  shapes: { straight: number; elbow: number; curve: number };
 }
 
 export interface ImportedGraph {
@@ -259,13 +293,27 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
   /* ---------- 2) 连线 → 边（按飞书连线 id 去重，保留平行边） ---------- */
   const outLabels = new Map<string, string[]>(); // 本地 id → 出边文字
   const edgeRefs: AnchorEdgeRef[] = [];
-  const rawEdgeMeta: { source: string; target: string; label: string }[] = [];
+  const rawEdgeMeta: { source: string; target: string; label: string; shape?: FeishuEdgeShape }[] =
+    [];
   /** o1 型负载自带的 position 真值（用户真实落点）→ 对应边直接钉住侧，
    *  不再走几何/图级推断。o2 型无 position → undefined，维持推断。 */
   const pins: ({ sourceSide: AnchorSide; targetSide: AnchorSide } | undefined)[] = [];
   const pairCount = new Map<string, number>();
   let labeled = 0;
   let parallel = 0;
+  /** 线型统计：老剪贴板没有 shape 字段 → shaped 为 0，导入端按所选样式兜底 */
+  let shaped = 0;
+  const shapeCount: { straight: number; elbow: number; curve: number } = {
+    straight: 0,
+    elbow: 0,
+    curve: 0,
+  };
+  const readShape = (v: unknown): FeishuEdgeShape | undefined => {
+    if (v === 0) return 'straight';
+    if (v === 1) return 'elbow';
+    if (v === 2) return 'curve';
+    return undefined;
+  };
 
   /** 节点原始盒子（画板坐标；baseV2 的 x/y 是左上角） */
   const rawBoxById = new Map<string, { x: number; y: number; w: number; h: number; diamond?: boolean }>(
@@ -300,7 +348,12 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
     const pinT = sideFromPos(asRecord(conn.endObject).position);
     pins.push(pinS && pinT ? { sourceSide: pinS, targetSide: pinT } : undefined);
     edgeRefs.push({ source, target, label });
-    rawEdgeMeta.push({ source, target, label });
+    const shape = readShape(conn.shape);
+    if (shape) {
+      shaped += 1;
+      shapeCount[shape] += 1;
+    }
+    rawEdgeMeta.push({ source, target, label, shape });
   });
 
   /* 批量图级推断出/入侧：单边 inferAnchorSides 只按「最近侧」，会漏掉三类：
@@ -317,6 +370,7 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
       label: m.label,
       sourceSide: si.sourceSide,
       targetSide: si.targetSide,
+      ...(m.shape ? { shape: m.shape } : {}),
     };
   });
 
@@ -356,6 +410,15 @@ export function parseFeishuWhiteboard(html: string): ImportedGraph {
   return {
     nodes,
     edges,
-    stats: { nodes: nodes.length, edges: edges.length, decisions, labeled, parallel, weak },
+    stats: {
+      nodes: nodes.length,
+      edges: edges.length,
+      decisions,
+      labeled,
+      parallel,
+      weak,
+      shaped,
+      shapes: shapeCount,
+    },
   };
 }

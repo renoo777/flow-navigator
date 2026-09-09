@@ -29,3 +29,6 @@ probe-*/
 
 # 本地 cargo 机器配置（target-dir 等，勿提交——会破坏 CI 跨平台构建）
 src-tauri/.cargo/
+
+# oh-my-mermaid 架构文档（本地生成，不入库）
+.omm/

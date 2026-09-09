@@ -5,25 +5,40 @@ import { ModalShell } from './VarModals';
 
 export type ImportLayout = 'reflow' | 'keep';
 
-/** 连线样式三选（肉眼可挑，不必先记住名词） */
-const EDGE_STYLE_OPTIONS: { id: string; label: string; desc: string; path: string }[] = [
+/** 连线样式四选（肉眼可挑，不必先记住名词）。
+ *  `original` 为 0918 新增：飞书原图常混用直线/曲线/肘线，统一改成一种会丢原意，
+ *  故提供「每条线各用飞书自己的线型」，并在剪贴板带线型信息时作为默认置顶。 */
+interface EdgeStyleOption {
+  id: string;
+  label: string;
+  desc: string;
+  /** 示意路径（可多条，用于表达混用） */
+  paths: string[];
+}
+const EDGE_STYLE_OPTIONS: EdgeStyleOption[] = [
+  {
+    id: 'original',
+    label: '按飞书原样',
+    desc: '每条线各用各的线型（推荐）',
+    paths: ['M4 12 L32 12', 'M4 24 C12 16 24 32 32 24', 'M4 36 V32 Q4 29 7 29 H32'],
+  },
   {
     id: 'smoothstep',
     label: '肘线',
-    desc: '圆角折线，流程走向最清晰（推荐）',
-    path: 'M6 30 V15 Q6 10 11 10 H30',
+    desc: '全部改成圆角折线',
+    paths: ['M6 30 V15 Q6 10 11 10 H30'],
   },
   {
     id: 'default',
     label: '曲线',
-    desc: '贝塞尔曲线，视觉更柔和',
-    path: 'M6 30 C6 12 14 10 30 10',
+    desc: '全部改成贝塞尔曲线',
+    paths: ['M6 30 C6 12 14 10 30 10'],
   },
   {
     id: 'straight',
     label: '直线',
-    desc: '两点直连，最省空间',
-    path: 'M6 30 L30 10',
+    desc: '全部改成两点直连',
+    paths: ['M6 30 L30 10'],
   },
 ];
 
@@ -40,8 +55,12 @@ export function PasteImportModal({
   onApply: (layout: ImportLayout, replace: boolean, edgeType: string) => void;
 }) {
   const [layout, setLayout] = useState<ImportLayout>('reflow');
-  const [edgeType, setEdgeType] = useState('smoothstep');
-  const { nodes, edges, decisions, labeled, parallel, weak } = graph.stats;
+  const { nodes, edges, decisions, labeled, parallel, weak, shaped, shapes } = graph.stats;
+  /** 剪贴板带线型信息 → 默认「按飞书原样」（混用线型的图不再被统一改掉）；
+   *  老剪贴板无 shape 字段 → 退回肘线，第四项置灰并说明。 */
+  const hasShape = shaped > 0;
+  const shapeKinds = [shapes.straight, shapes.elbow, shapes.curve].filter((n) => n > 0).length;
+  const [edgeType, setEdgeType] = useState(hasShape ? 'original' : 'smoothstep');
 
   return (
     <ModalShell
@@ -122,26 +141,56 @@ export function PasteImportModal({
       <div className="pi-field">
         <div className="pi-field-label">连线样式</div>
         <div className="pi-edge-opts" data-testid="pi-edge-styles">
-          {EDGE_STYLE_OPTIONS.map((o) => (
-            <label key={o.id} className={`pi-edge ${edgeType === o.id ? 'on' : ''}`}>
-              <input
-                type="radio"
-                name="pi-edge"
-                checked={edgeType === o.id}
-                onChange={() => setEdgeType(o.id)}
-              />
-              <svg className="pie-svg" viewBox="0 0 36 40" aria-hidden="true" focusable="false">
-                <path d={o.path} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                <circle cx="6" cy="30" r="2.4" fill="currentColor" />
-                <circle cx="30" cy="10" r="2.4" fill="currentColor" />
-              </svg>
-              <span className="pie-text">
-                {o.label}
-                <em>{o.desc}</em>
-              </span>
-            </label>
-          ))}
+          {EDGE_STYLE_OPTIONS.map((o) => {
+            const off = o.id === 'original' && !hasShape;
+            return (
+              <label
+                key={o.id}
+                className={`pi-edge ${edgeType === o.id ? 'on' : ''}${off ? ' off' : ''}`}
+                title={off ? '这段剪贴板里没有线型信息，无法按原样还原' : undefined}
+              >
+                <input
+                  type="radio"
+                  name="pi-edge"
+                  checked={edgeType === o.id}
+                  disabled={off}
+                  onChange={() => setEdgeType(o.id)}
+                />
+                <svg className="pie-svg" viewBox="0 0 36 40" aria-hidden="true" focusable="false">
+                  {o.paths.map((d, i) => (
+                    <path
+                      key={i}
+                      d={d}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                  ))}
+                  {o.paths.length === 1 && (
+                    <>
+                      <circle cx="6" cy="30" r="2.4" fill="currentColor" />
+                      <circle cx="30" cy="10" r="2.4" fill="currentColor" />
+                    </>
+                  )}
+                </svg>
+                <span className="pie-text">
+                  {o.label}
+                  <em>
+                    {o.id === 'original' && hasShape
+                      ? `检测到 ${shapeKinds} 种线型，逐条还原`
+                      : o.desc}
+                  </em>
+                </span>
+              </label>
+            );
+          })}
         </div>
+        {!hasShape && (
+          <div className="pi-note" style={{ marginTop: 10 }}>
+            · 这份剪贴板不含线型信息（旧版飞书负载），「按飞书原样」不可用，已默认肘线
+          </div>
+        )}
       </div>
 
       {(parallel > 0 || weak > 0) && (

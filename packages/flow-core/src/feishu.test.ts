@@ -1,7 +1,7 @@
 /** 飞书画板剪贴板解析 · 单测（fixture 来自真实飞书复制样本，已脱敏精简） */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { isFeishuWhiteboardHtml, parseFeishuWhiteboard } from './feishu';
+import { isFeishuWhiteboardHtml, parseFeishuWhiteboard, shapeToEdgeType } from './feishu';
 import type { ImportedEdge, ImportedNode } from './feishu';
 
 const fixture = readFileSync(
@@ -225,5 +225,70 @@ describe('parseFeishuWhiteboard · 容错', () => {
   it('空画板抛错而不是静默返回空图', () => {
     expect(() => parseFeishuWhiteboard(buildHtml([]))).toThrow();
     expect(() => parseFeishuWhiteboard(buildHtml([{ id: 'x', type: 99 }]))).toThrow();
+  });
+});
+
+/** 带线型字段的连线（connectorV2.shape：0=直线 1=肘线 2=曲线，真实样本自证） */
+const connShaped = (from: string, to: string, sh?: number) => ({
+  id: `c:${from}-${to}`,
+  type: 15,
+  info: {
+    connectorV2: {
+      ...(sh === undefined ? {} : { shape: sh }),
+      startObject: { objectId: from },
+      endObject: { objectId: to },
+      captions: {},
+    },
+  },
+});
+
+describe('飞书连线线型（0918 新增「按飞书原样」粘贴方式）', () => {
+  const base = () => [
+    shape('a', 8, '开始', 0, 0),
+    shape('b', 8, '步骤一', 0, 200),
+    shape('c', 8, '步骤二', 0, 400),
+    shape('d', 8, '结束', 0, 600),
+  ];
+
+  it('shape 0/1/2 分别解析为 straight / elbow / curve', () => {
+    const g = parseFeishuWhiteboard(
+      buildHtml([...base(), connShaped('a', 'b', 0), connShaped('b', 'c', 1), connShaped('c', 'd', 2)])
+    );
+    expect(g.edges.map((e: ImportedEdge) => e.shape)).toEqual(['straight', 'elbow', 'curve']);
+    expect(g.stats.shaped).toBe(3);
+    expect(g.stats.shapes).toEqual({ straight: 1, elbow: 1, curve: 1 });
+  });
+
+  it('老剪贴板无 shape 字段 → edge.shape 为 undefined、shaped 为 0', () => {
+    const g = parseFeishuWhiteboard(buildHtml([...base(), connShaped('a', 'b'), connShaped('b', 'c')]));
+    expect(g.edges.every((e: ImportedEdge) => e.shape === undefined)).toBe(true);
+    expect(g.stats.shaped).toBe(0);
+    expect(g.stats.shapes).toEqual({ straight: 0, elbow: 0, curve: 0 });
+  });
+
+  it('混用线型时各条按自己类型保留，不会互相覆盖', () => {
+    const g = parseFeishuWhiteboard(
+      buildHtml([
+        ...base(),
+        connShaped('a', 'b', 2),
+        connShaped('b', 'c', 2),
+        connShaped('c', 'd', 1),
+      ])
+    );
+    expect(g.edges.map((e: ImportedEdge) => e.shape)).toEqual(['curve', 'curve', 'elbow']);
+    expect(g.stats.shapes).toEqual({ straight: 0, elbow: 1, curve: 2 });
+  });
+
+  it('未知 shape 值不误判，按缺失处理', () => {
+    const g = parseFeishuWhiteboard(buildHtml([...base(), connShaped('a', 'b', 9)]));
+    expect(g.stats.shaped).toBe(0);
+    expect(g.edges[0].shape).toBeUndefined();
+  });
+
+  it('shapeToEdgeType：直线→straight、曲线→default、肘线与缺失→smoothstep', () => {
+    expect(shapeToEdgeType('straight')).toBe('straight');
+    expect(shapeToEdgeType('curve')).toBe('default');
+    expect(shapeToEdgeType('elbow')).toBe('smoothstep');
+    expect(shapeToEdgeType(undefined)).toBe('smoothstep');
   });
 });

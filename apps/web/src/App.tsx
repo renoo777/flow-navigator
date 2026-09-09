@@ -18,6 +18,8 @@ import {
   layeredLayout,
   layoutGraph,
   resolveVariables,
+  shapeToEdgeType,
+  type CanvasEdgeType,
   type FlowVariable,
   type ImportedGraph,
   type NodeKind,
@@ -419,7 +421,11 @@ function EditorScreen() {
             source,
             target,
             /* 平行边（同一对节点间多条分支）各自独立 id，否则后者覆盖前者 */
-            type: edgeType,
+            /* 0918：「按飞书原样」时每条线各用飞书自己的线型（直线/肘线/曲线），
+               不再整图统一成一种 —— 混用线型的原图粘贴后才不会全被改掉。
+               老剪贴板无 shape 字段 → shapeToEdgeType 兜底为肘线。 */
+            type:
+              edgeType === 'original' ? shapeToEdgeType(e.shape) : edgeType,
             label: e.label,
             selected: false,
             sourceHandle: sides?.source,
@@ -429,6 +435,25 @@ function EditorScreen() {
           } as Edge,
         ];
       });
+      /* 本图默认线型：「按飞书原样」时取出现最多的那种，之后手拉的线跟主流一致；
+         无 shape 字段（老剪贴板）则全部兜底肘线，众数自然也是肘线。 */
+      const modeEdgeType: CanvasEdgeType = (() => {
+        if (edgeType !== 'original') return edgeType as CanvasEdgeType;
+        const cnt = new Map<string, number>();
+        g.edges.forEach((e) => {
+          const t = shapeToEdgeType(e.shape);
+          cnt.set(t, (cnt.get(t) ?? 0) + 1);
+        });
+        let best: CanvasEdgeType = 'smoothstep';
+        let bestN = 0;
+        cnt.forEach((n, t) => {
+          if (n > bestN) {
+            bestN = n;
+            best = t as CanvasEdgeType;
+          }
+        });
+        return best;
+      })();
       useAppStore.setState({
         nodes: replace ? nodes : [...s.nodes, ...nodes],
         edges: replace ? edges : [...s.edges, ...edges],
@@ -437,7 +462,7 @@ function EditorScreen() {
         /* 替换 = 一张新图：变量启用集合回到未决定，让「设为变量」引导再走一次 */
         ...(replace ? { enabledVarNodeIds: null } : {}),
         /* 顺手把本次选的连线样式记为本图默认，之后手拉的线也跟它一致 */
-        defaultEdgeType: replace ? edgeType : s.defaultEdgeType,
+        defaultEdgeType: replace ? modeEdgeType : s.defaultEdgeType,
         mode: 'edit',
       });
       setPendingImport(null);
