@@ -154,3 +154,31 @@ describe('inferLayoutDirection', () => {
     );
   });
 });
+
+describe('layeredLayout：WP7-3d 锁尺寸节点按真实尺寸排布', () => {
+  const N2 = (id: string, size?: { w: number; h: number }): ReflowNode => ({
+    id, label: id, x: 0, y: 0, ...(size ? { size } : {}),
+  });
+
+  it('锁尺寸 200×120 的大卡：纵向不重叠（间距按 size 而非文本估算）', () => {
+    const pos = layeredLayout([N2('A', { w: 200, h: 120 }), N2('B', { w: 200, h: 120 })], [E('A', 'B')]);
+    // A、B 上下相邻（TB），B 顶 ≥ A 顶 + 120 + vGap(90) - 容差
+    expect(pos.B.y).toBeGreaterThanOrEqual(pos.A.y + 120 + 90 - 1);
+    expect(pos.A.x).toBeCloseTo(pos.B.x, 6); // 单列居中同 x
+  });
+
+  it('锁尺寸 92×52 小卡（飞书窄卡）：宽度不再被 148 下限撑大 → 层内可更紧凑', () => {
+    const pos = layeredLayout(
+      [N2('A', { w: 92, h: 52 }), N2('B', { w: 92, h: 52 }), N2('C', { w: 92, h: 52 })],
+      []
+    );
+    // 同层三卡横向排：C.x ≥ A.x + 92 + 2*hGap(40) - 容差（若按文本 148+ 会排不下/更宽）
+    expect(pos.C.x).toBeGreaterThanOrEqual(pos.A.x + 92 + 2 * 40 - 1);
+  });
+
+  it('无 size → 布局仍按文本估算（向后兼容）', () => {
+    const pos = layeredLayout([N2('A'), N2('B')], [E('A', 'B')]);
+    const s = flowCardSize('A');
+    expect(pos.B.y).toBeGreaterThanOrEqual(pos.A.y + s.h + 90 - 1);
+  });
+});

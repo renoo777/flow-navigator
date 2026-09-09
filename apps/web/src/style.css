@@ -542,6 +542,29 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
      与 flow-core/src/nodeSize.ts 的 FLOW_W_MAX 保持一致，改这里请同步改那边。 */
   max-width: 216px;
 }
+/* WP7-3d 锁尺寸卡（飞书导入）：data.size 定宽高 → 还原飞书原卡形状。
+   rail/kind 小标收起给文本让位（飞书卡是纯色块），文本居中多行、超界裁切。 */
+.sop-node.keep-shape {
+  max-width: none;
+  min-width: 0; /* 覆盖全局 148px 下限：飞书窄卡(92~138)按原宽渲染 */
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.sop-node.keep-shape .rail,
+.sop-node.keep-shape .sop-sub { display: none; }
+.sop-node.keep-shape .sop-flow {
+  height: 100%;
+  padding: 4px 10px;
+  box-sizing: border-box;
+}
+.sop-node.keep-shape .sop-label {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.sop-node.keep-shape .pending-dot { position: absolute; top: 6px; left: 8px; }
 .sop-node[data-view='talk'] {
   background: var(--n-bg, #fff);
   border: 1.2px solid var(--n-st, var(--hairline));

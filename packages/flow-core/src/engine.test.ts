@@ -4,6 +4,7 @@ import {
   computeScenario,
   deriveVariableCandidates,
   deriveVariables,
+  estimateNodeSize,
   layoutGraph,
   resolveVariables,
   edgeIdOf,
@@ -323,5 +324,28 @@ describe('循环可视化：回边识别与经过次数', () => {
   it('打回后再通过，最终到达归档且无待定', () => {
     expect(sc.activeNodes.has('D')).toBe(true);
     expect(sc.pendingVars.size).toBe(0);
+  });
+});
+
+describe('estimateNodeSize：WP7-3d 导入锁尺寸优先', () => {
+  const node = (data: Record<string, unknown>) =>
+    ({ id: 'x', type: 'sop', position: { x: 0, y: 0 }, data }) as Parameters<typeof estimateNodeSize>[0];
+
+  it('flow view 有 data.size → 直接返回锁尺寸', () => {
+    const s = estimateNodeSize(node({ label: '长文本占位', kind: 'step', talk: [], size: { w: 134, h: 73 } }), 'flow');
+    expect(s).toEqual({ w: 134, h: 73 });
+  });
+
+  it('flow view 无 size → 退回文本自适应（不受影响）', () => {
+    const s = estimateNodeSize(node({ label: '通过审核', kind: 'step', talk: [] }), 'flow');
+    expect(s.w).toBeGreaterThanOrEqual(148);
+    expect(s.w).toBeLessThanOrEqual(216);
+    expect(s.h).toBeGreaterThanOrEqual(46);
+  });
+
+  it('talk view 忽略 size（话术卡宽度/高度仍走 talk 逻辑）', () => {
+    const s = estimateNodeSize(node({ label: 'x', kind: 'step', talk: [{ side: 'agent', text: '你好' }], size: { w: 134, h: 73 } }), 'talk');
+    expect(s.w).toBeGreaterThanOrEqual(240); // TALK_W_MIN
+    expect(s.h).toBeGreaterThan(73); // 表单高远大于锁高
   });
 });

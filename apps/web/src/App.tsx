@@ -31,6 +31,7 @@ import {
   type ExprType,
   type NodePaint,
   type SopFlowNode,
+  type SopNodeData,
 } from '@flow/canvas';
 import { VariableDock } from '@flow/dock';
 import { VariableGuideModal, VariableManageModal } from './VarModals';
@@ -226,6 +227,15 @@ function EditorScreen() {
     if (enabledVarNodeIds !== null) guideLock.current = false;
   }, [docId, readonly, candidates, enabledVarNodeIds]);
 
+  /* —— 测试钩子：探针需要编程式控制视口（选中边后拖端点等真机断言）。
+        只读暴露 RF 实例，不触碰业务状态。 */
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__flowRF = rf;
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__flowRF;
+    };
+  }, [rf]);
+
   const handleGuideDecide = useCallback(
     (ids: string[] | null) => {
       setGuideOpen(false);
@@ -329,11 +339,18 @@ function EditorScreen() {
       const nodes: SopFlowNode[] = g.nodes.map((n, i) => {
         const id = `n${stamp}${i.toString(36)}`;
         remap.set(n.id, id);
+        /* 锁尺寸：飞书解析出的每张卡原始 w/h 一并落进 data.size，
+           SopNode 渲染 + 布局估算都优先读它（WP7-3d 卡片形状向飞书收敛）。
+           没有尺寸（旧文档/极老负载）→ 不锁，走文本自适应，向后兼容。 */
+        const size =
+          typeof n.w === 'number' && typeof n.h === 'number' && n.w > 0 && n.h > 0
+            ? { w: Math.round(n.w), h: Math.round(n.h) }
+            : undefined;
         return {
           id,
           type: 'sop',
           position: { x: n.x, y: n.y },
-          data: { label: n.label, kind: n.kind, talk: [] },
+          data: { label: n.label, kind: n.kind, talk: [], ...(size ? { size } : {}) },
           selected: false,
         };
       });
@@ -345,6 +362,8 @@ function EditorScreen() {
         label: String(n.data.label ?? ''),
         x: n.position.x,
         y: n.position.y,
+        /* 锁尺寸节点把真实 w/h 传给布局引擎（空隙按飞书卡实际大小拉开） */
+        ...((n.data as SopNodeData).size ? { size: (n.data as SopNodeData).size } : {}),
       }));
       const reflowEdges = g.edges
         .map((e) => ({ source: remap.get(e.source) ?? '', target: remap.get(e.target) ?? '' }))

@@ -478,8 +478,14 @@ export function buildGraph(nodeDefs: NodeDef[], edges: EdgeDef[]): { nodes: Flow
 export function estimateNodeSize(node: FlowNode, view: FlowView): { w: number; h: number } {
   const data = node.data;
   const label = data?.label ?? '';
+  /* WP7-3d 锁尺寸：导入节点带 data.size（飞书原始卡宽高）→ 布局按真实形状拉开，
+     不再按文本估算。手动卡/旧文档无 size → 走原估算。 */
+  const locked =
+    view === 'flow' && !!data?.size && data.size.w > 0 && data.size.h > 0
+      ? data.size
+      : null;
   /* 流程视图尺寸：宽度封顶 + 长文本换行增高（与 style.css、reflow 共用 nodeSize 规则） */
-  const flow = flowCardSize(label);
+  const flow = locked ?? flowCardSize(label);
   const w = flow.w;
   if (view === 'talk') {
     const rows = (data?.talk ?? []).filter((t) => t && t.text.trim());

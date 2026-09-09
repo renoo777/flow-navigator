@@ -19,6 +19,8 @@ export interface ReflowNode {
   /** 原始坐标（左上角），用于保持左右分支关系 */
   x: number;
   y: number;
+  /** WP7-3d 锁尺寸（飞书导入卡原始 w/h）；缺省 → 按 label 文本估算 */
+  size?: { w: number; h: number };
 }
 
 export interface ReflowEdge {
@@ -40,9 +42,11 @@ export interface ReflowOptions {
   direction?: ReflowDirection;
 }
 
-/** 流程视图卡片尺寸估算（与 style.css / estimateNodeSize 共用 nodeSize 规则） */
-function sizeOf(label: string): { w: number; h: number } {
-  return flowCardSize(label);
+/** 流程视图卡片尺寸估算：锁尺寸节点优先读 size，否则按文本估算
+ *  （与 style.css / estimateNodeSize 共用 nodeSize 规则） */
+function sizeOf(n: ReflowNode): { w: number; h: number } {
+  if (n.size && n.size.w > 0 && n.size.h > 0) return n.size;
+  return flowCardSize(n.label || '');
 }
 
 /**
@@ -64,7 +68,7 @@ export function layeredLayout(
   if (!nodes.length) return {};
 
   const size: Record<string, { w: number; h: number }> = {};
-  nodes.forEach((n) => (size[n.id] = sizeOf(n.label || '')));
+  nodes.forEach((n) => (size[n.id] = sizeOf(n)));
 
   const ids = nodes.map((n) => n.id);
   const idSet = new Set(ids);

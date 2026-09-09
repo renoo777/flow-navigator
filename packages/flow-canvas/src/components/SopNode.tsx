@@ -48,6 +48,9 @@ export type SopNodeData = {
   talkDir?: TalkDir;
   /** 话术卡片宽度 px（右缘把手拖拽写入） */
   talkW?: number;
+  /** WP7-3d 导入锁尺寸：飞书解析出的卡片原始 w/h（flow view 渲染与布局估算优先读它，
+   *  还原飞书卡形状；不设 = 文本自适应扁卡，手动节点/旧文档保持原样） */
+  size?: { w: number; h: number };
   /** 上下游链路追踪结果（FlowCanvas 注入）：root=起点 / hit=命中 / miss=链路外 */
   chain?: 'root' | 'hit' | 'miss';
   /** Build M：情景路线已完全确定（沿途无待赋值变量）→ 最高强调级 */
@@ -87,10 +90,14 @@ export function SopNode({ id, data, selected }: NodeProps) {
     connectable = true,
   } = d;
   const rail = KIND_RAIL[kind] ?? 'transparent';
+  /** WP7-3d：锁尺寸卡 = 飞书原形状还原。渲染按 data.size 定宽高（CSS .keep-shape
+   *  收起 rail/kind 小标让文本居中满布，贴近飞书纯色卡片；文本超界裁切，双击看全文）。 */
+  const keepShape = view === 'flow' && !!d.size && d.size.w > 0 && d.size.h > 0;
   const cls = [
     'sop-node',
     `st-${status}`,
     selected ? 'is-selected' : '',
+    keepShape ? 'keep-shape' : '',
     d.chain ? `chain-${d.chain}` : '',
     d.searchDim ? 'search-dim' : '',
     d.searchActive ? 'search-active' : '',
@@ -150,6 +157,14 @@ export function SopNode({ id, data, selected }: NodeProps) {
         '--n-fg': paint.text,
       } as CSSProperties)
     : undefined;
+  /** WP7-3d：锁尺寸卡 → 宽高随 data.size（paint 变量与 width/height 合并进同一 style） */
+  const nodeStyle: CSSProperties | undefined = keepShape
+    ? {
+        ...(paintStyle ?? {}),
+        width: d.size!.w,
+        height: d.size!.h,
+      }
+    : paintStyle;
 
   /** 双击进入编辑态（受控 data.editing=true；只读 view 模式锁定）。
    *  记录双击的屏幕坐标，交给编辑器把光标放到点击处 —— 不清空、不全选。 */
@@ -175,7 +190,7 @@ export function SopNode({ id, data, selected }: NodeProps) {
       data-status={status}
       data-kind={kind}
       data-view={view}
-      style={paintStyle}
+      style={nodeStyle}
     >
       {/* 四向连接点：上下左右都可发起 / 接收连线（配合 ConnectionMode.Loose）。
           只读态（情景导航 / 查看）由画布的 no-connect 类整体隐形，DOM 里保留 ——

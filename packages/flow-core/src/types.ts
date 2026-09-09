@@ -35,6 +35,8 @@ export interface SopData {
   talkDir?: TalkDir;
   /** 话术卡片宽度 px（拖拽把手写入） */
   talkW?: number;
+  /** WP7-3d 锁尺寸（飞书导入卡原始 w/h）：渲染与布局估算优先读它还原飞书形状 */
+  size?: { w: number; h: number };
 }
 
 /** 画布节点（与 React Flow Node 解耦，纯数据） */
