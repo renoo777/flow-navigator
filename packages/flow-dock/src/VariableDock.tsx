@@ -57,6 +57,12 @@ export interface DockProps {
   onExport: () => void;
   /** B2 PNG 图片导出（懒加载 html-to-image） */
   onExportPng: () => void;
+  /** 0918 · 情景演示动画导出 GIF（按路线重放逐帧截屏；仅 scenario 有意义） */
+  onExportGif: () => void;
+  /** GIF 导出进行中（按钮禁用 + 显示进度） */
+  gifBusy: boolean;
+  /** 导出进度文本（如 12/34）；null = 未在导出 */
+  gifProgress: string | null;
   /** Build K-③ · 1200×630 社交分享卡导出 */
   onShareCard: () => void;
   /** B3 主题切换 */
@@ -138,6 +144,9 @@ export function VariableDock({
   onRemoveVar,
   onExport,
   onExportPng,
+  onExportGif,
+  gifBusy,
+  gifProgress,
   onShareCard,
   theme,
   onToggleTheme,
@@ -495,6 +504,19 @@ export function VariableDock({
             }
           >
             一键示例路线
+          </button>
+          <button
+            className="ghost"
+            onClick={onExportGif}
+            disabled={gifBusy || !stepsCount}
+            data-testid="export-gif-btn"
+            title={
+              !stepsCount
+                ? '先走一条路线（变量取值或一键示例路线），把过程演示出来再导出'
+                : '把刚才的路线演示导出为 GIF 动图（直线/曲线/肘线各自保留，可直接发微信/PPT）'
+            }
+          >
+            {gifBusy ? `导出中 ${gifProgress ?? ''}…` : '导出 GIF'}
           </button>
         </div>
       )}

@@ -42,6 +42,7 @@ import { LibraryScreen } from './LibraryScreen';
 import { useAppStore } from './store';
 import { useEditorShortcuts } from './useEditorShortcuts';
 import { exportFlowPng } from './exportPng';
+import { exportFlowGif } from './exportGif';
 import { exportShareCard } from './exportShareCard';
 
 const THEME_KEY = 'flow-app:theme';
@@ -482,6 +483,36 @@ function EditorScreen() {
     }
   }, [rf, docName]);
 
+  /** 0918 · 情景演示动画导出 GIF：按 steps 前缀重放高亮链路，逐帧截屏编码。
+   *  导出期间把画布状态临时回退到各前缀（高亮随之前缀亮起），结束后恢复完整路线。 */
+  const [gifExport, setGifExport] = useState<{ done: number; total: number } | null>(null);
+  const handleExportGif = useCallback(async () => {
+    const s = useAppStore.getState();
+    if (!s.steps.length) {
+      window.alert('先走一条路线（逐个给变量取值，或点「一键示例路线」），再导出 GIF');
+      return;
+    }
+    const el = document.querySelector('.canvas-wrap .react-flow__viewport') as HTMLElement | null;
+    if (!el) return;
+    const snapshot = [...s.steps];
+    setGifExport({ done: 0, total: 0 });
+    try {
+      await exportFlowGif({
+        rf,
+        viewportEl: el,
+        docName,
+        steps: snapshot,
+        advance: (k) => useAppStore.setState({ steps: snapshot.slice(0, k) }),
+        onProgress: (done, total) => setGifExport({ done, total }),
+      });
+    } catch (e) {
+      window.alert(`GIF 导出失败：${(e as Error)?.message ?? e}`);
+    } finally {
+      useAppStore.setState({ steps: snapshot });
+      setGifExport(null);
+    }
+  }, [rf, docName]);
+
   /** Build K-③ · 1200×630 社交分享卡：纯 Canvas 重绘（非截图），零依赖。
    *  位置用 dagre 现算一份布局——用户可能从没整理过画布（节点全在 0,0），
    *  分享卡必须永远呈现「整理过」的样子，但不能动用户画布上的真实坐标。 */
@@ -717,6 +748,9 @@ function EditorScreen() {
         onRemoveVar={toggleVarEnabled}
         onExport={handleExport}
         onExportPng={() => void handleExportPng()}
+        onExportGif={() => void handleExportGif()}
+        gifBusy={!!gifExport}
+        gifProgress={gifExport ? `${gifExport.done}/${gifExport.total}` : null}
         onShareCard={() => void handleShareCard()}
         onToggleTheme={toggleTheme}
         theme={themeVal}

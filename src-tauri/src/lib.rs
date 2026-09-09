@@ -13,6 +13,21 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
+/// 0918 · GIF 导出落盘（save dialog 选定路径后写盘）。
+/// 二进制经 IPC 的命名参数会被 JSON 序列化失真，故前端传 base64 文本，
+/// 这里解码后直接写用户所选路径（可能在任何盘符，不走 app_data_dir）。
+#[tauri::command]
+fn export_save_bytes(path: String, b64: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.as_bytes())
+        .map_err(|e| format!("base64 解码失败: {e}"))?;
+    if let Some(parent) = PathBuf::from(&path).parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
 const LIB_FILE: &str = "flow-library.json";
 const BACKUP_DIR: &str = "library-backups";
 const KEEP_BACKUPS: usize = 7;
@@ -120,7 +135,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![vault_path, vault_load, vault_save])
+        .invoke_handler(tauri::generate_handler![vault_path, vault_load, vault_save, export_save_bytes])
         .run(tauri::generate_context!())
         .expect("启动 Flow Navigator 失败");
 }

@@ -21,6 +21,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = "2.11.0"
+# 0918 · GIF 导出落盘：二进制经 IPC 以 base64 传（避免 JSON 序列化失真）
+base64 = "0.22"
 
 [profile.release]
 codegen-units = 1
