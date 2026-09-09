@@ -1451,9 +1451,12 @@ body::before {
 }
 .canvas-wrap[data-editable="0"] .react-flow__edge { cursor: default; }
 
-/* Bug1 交互调整（用户拍板）：点击节点=高亮直接上下游，只加亮不压暗 ——
-   链路外节点保持原亮度（历史版本 chain-miss 会把其他节点压到 0.2、
-   边压到 0.1，观感即「点全图后再点节点其他全灰了」，已删）。 */
+/* 链路追踪对比（用户拍板 2026-09-09 二次）：点击节点 = 链路加亮 + 链路外压暗 ——
+   恢复原强度 chain-miss（0.2/0.1），对比建立在 Bug1 遍历修复之上，
+   不再出现「大片节点被误置灰」的观感断裂；情景路线外的深度压暗（st-dim 0.22）
+   由 .has-scenario 规则接管，两者语义独立。 */
+.sop-node.chain-miss { opacity: 0.2; filter: saturate(0.3); }
+.react-flow__edge.chain-miss { opacity: 0.1; }
 .sop-node.chain-hit {
   box-shadow: 0 0 0 1.5px var(--accent), 0 6px 18px rgba(37, 99, 235, 0.16);
 }

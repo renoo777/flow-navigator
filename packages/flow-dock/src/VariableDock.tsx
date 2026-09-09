@@ -95,6 +95,19 @@ function varStatus(
   return assignments[v.nodeId] ? 'done' : 'free';
 }
 
+/** 变量级联展示（用户拍板 2026-09-09）：情景导航下，当前路线走不到的变量
+ *  （naVars=「未经过」）不占列表位，只显示已选 + 待定；上层变量换值后
+ *  computeScenario 重算，下游变量随可达性自动出现/消失。编辑态 scenario
+ *  为 null，展示全量启用变量（此时无路线概念）。 */
+function visibleVars(
+  variables: FlowVariable[],
+  scenario: ScenarioResult | null
+): FlowVariable[] {
+  if (!scenario) return variables;
+  const na = new Set(scenario.naVars.map((x) => x.nodeId));
+  return variables.filter((v) => !na.has(v.nodeId));
+}
+
 export function VariableDock({
   docName,
   onRename,
@@ -141,6 +154,7 @@ export function VariableDock({
   selectedCount,
 }: DockProps) {
   const editable = !readonly;
+  const shownVars = visibleVars(variables, scenario);
   /** Bug3：双击标题就地改名 —— setDocName 已落库+镜像，这里只补触发点 */
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(docName);
@@ -287,7 +301,8 @@ export function VariableDock({
 
       {/* 变量列表（启用集） */}
       <div className="var-head">
-        <span className="vh-title">变量 {varsCount > 0 ? `(${varsCount})` : ''}</span>
+        {/* 计数跟随列表（级联隐藏后只见「当前路线上的变量」，与下方条目一致） */}
+        <span className="vh-title">变量 {shownVars.length > 0 ? `(${shownVars.length})` : ''}</span>
         {editable && candidateCount > varsCount && (
           <span className="vh-hint">另有 {candidateCount - varsCount} 个候选</span>
         )}
@@ -354,7 +369,13 @@ export function VariableDock({
               : '画布上还没有可设变量。给一个节点连出两条分支，即可设为变量。'}
           </div>
         )}
-        {variables.map((v, i) => {
+        {/* 级联隐藏：启用变量非空、但当前路线全都没经过 → 明确告知而非空白 */}
+        {variables.length > 0 && shownVars.length === 0 && (
+          <div className="var-empty" data-testid="vars-all-hidden">
+            当前路线没有经过任何变量。换一个上游取值，或点「管理变量」查看全部。
+          </div>
+        )}
+        {shownVars.map((v, i) => {
           const st = varStatus(v, assignments, scenario);
           /* 环上第 N 次经过该判断点（N>0）：徽章标注，让用户知道这是回路中的再次决策 */
           const visit = scenario?.pendingVisits?.[v.nodeId] ?? 0;

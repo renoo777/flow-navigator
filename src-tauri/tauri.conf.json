@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Flow Navigator · 变量导航器",
+        "title": "Flow Navigator - 变量导航",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
@@ -33,7 +33,7 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "category": "Utility",
-    "shortDescription": "变量导航器",
+    "shortDescription": "Flow Navigator - 变量导航",
     "longDescription": "把一张复杂的 SOP 流程图，按变量取值实时收敛成一条可执行路线。支持上下游链路追踪、画布搜索、命令面板、路线高亮与一键分享图导出。v0.1.1：内置「支持作者」面板（微信/支付宝收款码）。v0.1.4：内置自动更新（GitHub Releases 通道）。",
     "publisher": "ming.zhou",
     "icon": [
