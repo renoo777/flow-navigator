@@ -20,9 +20,9 @@ let cachedVersion: string | null = null;
 export async function appVersion(): Promise<string> {
   if (cachedVersion) return cachedVersion;
   try {
-    cachedVersion = isTauriEnv ? await getVersion() : '0.1.4';
+    cachedVersion = isTauriEnv ? await getVersion() : '0.1.7';
   } catch {
-    cachedVersion = '0.1.4';
+    cachedVersion = '0.1.7';
   }
   return cachedVersion;
 }
