@@ -71,3 +71,38 @@ jobs:
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+  # 国内镜像版自动更新清单：把 latest.json 里各平台的下载地址统一加 gh-proxy 前缀，
+  # 另存为 latest-mirror.json 上传。tauri.conf.json 的第二个 endpoint 指向它 ——
+  # 官方 endpoint 因「网络被 reset」失败时，用户至少还有一条能走通的路。
+  # 注：Tauri 只在非 2XX 时才回退下一个 endpoint，所以本 job 只是兜底之一，不是万能药。
+  updater-mirror:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true # 镜像清单失败不影响安装包与官方 latest.json
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 生成 latest-mirror.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in v*) ;; *) TAG="v$(node -p "require('./package.json').version")" ;; esac
+          echo "tag = $TAG"
+          gh release download "$TAG" -R renoo777/flow-navigator -p latest.json -O latest.json
+          python3 - <<'PY'
+          import json
+          P = 'https://gh-proxy.com/'
+          d = json.load(open('latest.json', encoding='utf-8'))
+          for v in d.get('platforms', {}).values():
+              u = v.get('url', '')
+              if u.startswith('http'):
+                  v['url'] = P + u
+          json.dump(d, open('latest-mirror.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
+          print('mirrored:', [v['url'] for v in d.get('platforms', {}).values()])
+          PY
+          gh release upload "$TAG" latest-mirror.json -R renoo777/flow-navigator --clobber

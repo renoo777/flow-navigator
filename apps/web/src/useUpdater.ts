@@ -16,13 +16,17 @@ export const isTauriEnv =
 
 let cachedVersion: string | null = null;
 
+/** 发布页与镜像前缀（GitHub 直连在国内常被 reset，失败提示里给用户可手动下载的路） */
+const RELEASES_URL = 'https://github.com/renoo777/flow-navigator/releases/latest';
+const MIRROR = (u: string) => `https://gh-proxy.com/${u}`;
+
 /** 当前应用版本号（桌面端读 tauri.conf.json 的 version；浏览器回退到构建常量） */
 export async function appVersion(): Promise<string> {
   if (cachedVersion) return cachedVersion;
   try {
-    cachedVersion = isTauriEnv ? await getVersion() : '0.1.7';
+    cachedVersion = isTauriEnv ? await getVersion() : '0.1.8';
   } catch {
-    cachedVersion = '0.1.7';
+    cachedVersion = '0.1.8';
   }
   return cachedVersion;
 }
@@ -86,8 +90,14 @@ export async function manualCheckUpdates(): Promise<void> {
     await downloadAndRelaunch(update);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
+    /* 0918：国内访问 GitHub 常被 reset（不是配置问题）。与其只说「请确认网络」，
+       不如直接给出能用的下载入口 —— 官方发布页 + gh-proxy 镜像，复制即可下载。 */
     await message(
-      `检查更新失败，请确认网络可用后重试。\n\n${detail}`,
+      `自动更新服务连不上（国内网络访问 GitHub 常常超时/被重置）。\n\n` +
+        `可以手动下载最新版安装包：\n` +
+        `1）官方发布页：\n${RELEASES_URL}\n` +
+        `2）打不开就用国内镜像：\n${MIRROR(RELEASES_URL)}\n\n` +
+        `错误详情：${detail}`,
       { title: '检查更新失败', kind: 'error', okLabel: '关闭' }
     );
   }
