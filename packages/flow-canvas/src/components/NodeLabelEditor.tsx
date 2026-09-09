@@ -29,29 +29,38 @@ export function NodeLabelEditor({
   /* 只在进入编辑时灌一次初始值：之后内容由浏览器自己管，
      不经过 React 重渲染（否则受控更新会把光标顶回开头）。
      光标策略：优先放到双击处（改了中间两个字就不用整段重敲），
-     双击位置落在编辑层外则退回「光标放末尾」。 */
+     双击位置落在编辑层外则退回「光标放末尾」。
+
+     用 rAF 包一层：React StrictMode 会 mount→unmount→mount 双调用 effect，
+     第一次 focus 完立刻被卸载，浏览器焦点丢失；rAF 等 React 这次 commit 真正落幕
+     后再 focus，躲过 StrictMode 干扰。 */
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.textContent = initial;
-    el.focus();
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    let placed = false;
-    if (caret) {
-      const r = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
-        .caretRangeFromPoint?.(caret.x, caret.y);
-      if (r && el.contains(r.startContainer)) {
-        sel?.addRange(r);
-        placed = true;
+    const raf = requestAnimationFrame(() => {
+      const e2 = ref.current;
+      if (!e2) return;
+      e2.focus();
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      let placed = false;
+      if (caret) {
+        const r = (document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null })
+          .caretRangeFromPoint?.(caret.x, caret.y);
+        if (r && e2.contains(r.startContainer)) {
+          sel?.addRange(r);
+          placed = true;
+        }
       }
-    }
-    if (!placed) {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      range.collapse(false); // 光标放末尾
-      sel?.addRange(range);
-    }
+      if (!placed) {
+        const range = document.createRange();
+        range.selectNodeContents(e2);
+        range.collapse(false); // 光标放末尾
+        sel?.addRange(range);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, []);
 

@@ -269,7 +269,19 @@ export function SopNode({ id, data, selected }: NodeProps) {
           </div>
         )
       ) : (
-        <div className="sop-flow" onDoubleClick={startEdit}>
+        <div
+          className="sop-flow"
+          /* nodrag 让 React Flow 不把 mousedown 识别为节点拖拽起点（否则双击会被
+             RF 的拖动系统拦截，浏览器收不到 dblclick）。
+             nopan 同理，避免画布平移抢焦点。 */
+          onDoubleClick={startEdit}
+          onMouseDown={(e) => {
+            /* 仅「非编辑态」才阻止 RF 拖动。编辑态里 mouseDown 落在 contenteditable 上
+               由浏览器自己处理，RF 还是会拦截，所以这里还要 stopPropagation。
+               P0：仅在结构层生效，话术层是表单，节点拖动由 RF 自己管。 */
+            if (!editing) e.stopPropagation();
+          }}
+        >
           {status === 'pending' && <span className="pending-dot" title="待赋值：沿此分支继续导航" />}
           {editing ? (
             <NodeLabelEditor nodeId={id} initial={label} onDone={endEdit} caret={caret} />

@@ -329,7 +329,12 @@ describe('循环可视化：回边识别与经过次数', () => {
 
 describe('estimateNodeSize：WP7-3d 导入锁尺寸优先', () => {
   const node = (data: Record<string, unknown>) =>
-    ({ id: 'x', type: 'sop', position: { x: 0, y: 0 }, data }) as Parameters<typeof estimateNodeSize>[0];
+    ({
+      id: 'x',
+      type: 'sop',
+      position: { x: 0, y: 0 },
+      data,
+    }) as unknown as Parameters<typeof estimateNodeSize>[0];
 
   it('flow view 有 data.size → 直接返回锁尺寸', () => {
     const s = estimateNodeSize(node({ label: '长文本占位', kind: 'step', talk: [], size: { w: 134, h: 73 } }), 'flow');

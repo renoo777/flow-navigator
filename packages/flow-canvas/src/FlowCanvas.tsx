@@ -979,12 +979,13 @@ export function FlowCanvas({
         if (first) e.preventDefault();
 
         if (dr.kind === 'bend') {
-          /* 段平移：只改这一个 bend 的偏移量，t 不变 → 端点方向、其余段都不受影响 */
-          const bs = dr.bends.map((b, i) =>
-            i === dr.index
-              ? { t: b.t, dx: Math.round(dr.base.dx + dx), dy: Math.round(dr.base.dy + dy) }
-              : b
-          );
+          /* v4 bend-vertex：拖一个 bend 时所有 bends 共享同一 (dx, dy) —— 整条折线联动。
+             旧实现只改被拖那个 bend（其他 bend 不动），视觉上 bend 那一段在原位变弯，
+             用户反馈"只改变一条线的一个局部"；现在所有 bend 同步平移，整条线跟着 bend
+             一起上下/左右移动，端点保持不变（applyBendOrtho 锁首尾 vertex）。 */
+          const ddx = Math.round(dr.base.dx + dx);
+          const ddy = Math.round(dr.base.dy + dy);
+          const bs = dr.bends.map((b) => ({ t: b.t, dx: ddx, dy: ddy }));
           onEdgeRoute?.(
             dr.edgeId,
             {

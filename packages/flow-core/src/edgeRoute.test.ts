@@ -346,18 +346,28 @@ describe('WP5c 段平移路由（bend）：局部性 + 端点锁定', () => {
     const r = bendRoutePath('smoothstep', { ...base, bends: [bend(0.5, 200, 0)] });
     const v = r!.verts;
     const n = v.length;
-    expect(v[n - 2][0]).toBe(100);
-    expect(v[n - 2][1]).toBeLessThan(v[n - 1][1]);
+    /* v4 bend-vertex：bend 改的是 verts 中间 vertex（v[n-2]），
+       但 a/b 两端与 a-stub 段锁死 —— 出 A 的 stub 段必须保持垂直（dx=0）。
+       进 B 的方向由 bSide='top' 锁死 → verts[n-1] = b 节点位置 (100, 300)。
+       这里不要求 verts[n-2]→verts[n-1] 严格垂直（bend 一动中间 vertex 可以斜着进），
+       但 a/b 端点位置永不参与偏移。 */
+    expect(v[n - 1][0]).toBe(100);
+    expect(v[n - 1][1]).toBe(300);
+    expect(v[0][0]).toBe(100);
+    expect(v[0][1]).toBe(0);
+    /* 出 A 的 stub 段保持垂直（applyBendOrtho 跳过首尾 stub） */
+    expect(v[1][0]).toBe(100);
   });
 
-  it('肘线：真的被推开了（路径向右凸出），顶点只增加 2~4 个', () => {
+  it('肘线：真的被推开了（路径向右凸出），顶点数量不变（v4 vertex 偏移）', () => {
     const b0 = waypointRoutePath({ ...base, points: [] })!;
     const r = bendRoutePath('smoothstep', { ...base, bends: [bend(0.5, 200, 0)] })!;
-    const add = r.verts.length - b0.verts.length;
-    expect(add).toBeGreaterThanOrEqual(2);
-    expect(add).toBeLessThanOrEqual(4);
+    /* v4 不再插入新 vertex：bend 直接替换中间 vertex → verts 长度 = 基础路径长度 */
+    expect(r.verts.length).toBe(b0.verts.length);
+    /* 中间 vertex 偏移到 (300, 150) —— 「向右凸出」是真的发生了 */
     const maxX = Math.max(...r.verts.map((p) => p[0]));
     expect(maxX).toBeGreaterThan(200);
+    expect(r.verts[2][0]).toBe(300);
   });
 
   it('肘线：推出的是「按下处的一小段」，不是整段（拐点不贴节点）', () => {

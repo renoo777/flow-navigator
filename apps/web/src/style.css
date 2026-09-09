@@ -552,10 +552,17 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 }
 .sop-node.keep-shape .rail,
 .sop-node.keep-shape .sop-sub { display: none; }
+/* P5：锁尺寸卡文本居中（飞书画板：图形支持水平/垂直对齐）。
+   flex 容器自身居中 + 文本 text-align: center 双保险，
+   无论单行/多行/裁切都能视觉居中（编辑态复用同布局，不跳动）。 */
 .sop-node.keep-shape .sop-flow {
   height: 100%;
   padding: 4px 10px;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 .sop-node.keep-shape .sop-label {
   overflow: hidden;
@@ -563,6 +570,9 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   word-break: break-word;
+  text-align: center;
+  width: 100%;
+  line-height: 1.45;
 }
 .sop-node.keep-shape .pending-dot { position: absolute; top: 6px; left: 8px; }
 .sop-node[data-view='talk'] {

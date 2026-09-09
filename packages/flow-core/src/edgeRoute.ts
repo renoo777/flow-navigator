@@ -660,9 +660,17 @@ function pickSegment(
 }
 
 /**
- * 肘线：把选中的那段沿其法向推开。
- * 偏移只取法向分量 —— 沿段自身方向的位移对正交线没有意义（只会改变段长，
- * 等价于换一段），取法向后两端补出来的连接线天然垂直于该段，整体保持正交。
+ * 肘线：把 bend 视为「基础路径上 t 比例处的 vertex 偏移」——
+ * bend = { t, dx, dy } 表示在该 vertex 位置叠加 (dx, dy) 平移。
+ *
+ * 设计意图（v4 bend-vertex，替代 v3 bend-segment）：
+ *  v3 把 bend 当成「段偏移」，拖动时只让该段 ±18% 子段变形（其他段不动），
+ *  用户反馈"局部变形、不像在拖整条线"。
+ *  v4 改为「vertex 偏移」语义：拖动一个 bend 时，所有 bends 共享同一 (dx, dy)，
+ *  每个 bend 把对应的 vertex 同步平移 —— 整条折线跟着 bend 联动。
+ *
+ * 端点（verts[0]/verts[n-1]）永不参与：stick stub 段由 aSide/bSide 锁死，
+ * 起点/终点与节点的衔接方向始终不变。
  */
 function applyBendOrtho(
   verts: Array<[number, number]>,
@@ -671,45 +679,19 @@ function applyBendOrtho(
   const pick = pickSegment(verts, bend.t);
   if (!pick) return { verts, handle: null };
   const { idx, u } = pick;
+  /* 跳过首尾 stub 段：endpoints 必须保持与节点的衔接位置不变。 */
+  const n = verts.length - 1;
+  if (idx === 0 || idx === n - 1) return { verts, handle: null };
   const p0 = verts[idx];
   const p1 = verts[idx + 1];
-  const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
-  if (len < 1e-6) return { verts, handle: null };
-  const ux = (p1[0] - p0[0]) / len;
-  const uy = (p1[1] - p0[1]) / len;
-  const nx = -uy;
-  const ny = ux;
-  const d = bend.dx * nx + bend.dy * ny;
-  if (Math.abs(d) < 0.5) return { verts, handle: null };
-
-  /**
-   * 只推开「按下位置四周的一小段」，而不是整段。
-   * 整段平移会把拐点推到紧贴节点的地方（比如从起点 26px 处就横着拐出去），
-   * 看起来就是「顶部跟节点连接的位置变形了」。取按下点 ±18% 的子段，
-   * 凸起的形状才对称、且离两端都留有距离。
-   */
-  const w = 0.18;
-  const lo = Math.max(0, u - w);
-  const hi = Math.min(1, u + w);
-  if (hi - lo < 0.02) return { verts, handle: null };
-  const vx = nx * d;
-  const vy = ny * d;
-  const at = (r: number): [number, number] => [p0[0] + ux * len * r, p0[1] + uy * len * r];
-  const a0 = at(lo);
-  const a1 = at(hi);
-  const b0: [number, number] = [a0[0] + vx, a0[1] + vy];
-  const b1: [number, number] = [a1[0] + vx, a1[1] + vy];
-
-  const ins: Array<[number, number]> = [];
-  if (lo > 0.001) ins.push(a0);
-  ins.push(b0, b1);
-  if (hi < 0.999) ins.push(a1);
-  const out: Array<[number, number]> = [
-    ...verts.slice(0, idx + 1),
-    ...ins,
-    ...verts.slice(idx + 1),
-  ];
-  return { verts: out, handle: { x: (b0[0] + b1[0]) / 2, y: (b0[1] + b1[1]) / 2 } };
+  const baseX = p0[0] + (p1[0] - p0[0]) * u;
+  const baseY = p0[1] + (p1[1] - p0[1]) * u;
+  if (Math.abs(bend.dx) < 0.5 && Math.abs(bend.dy) < 0.5) return { verts, handle: null };
+  const newX = baseX + bend.dx;
+  const newY = baseY + bend.dy;
+  const out = verts.slice();
+  out[idx + 1] = [newX, newY];
+  return { verts: out, handle: { x: newX, y: newY } };
 }
 
 /** 单段三次贝塞尔上的点（基础曲线用） */
@@ -800,9 +782,11 @@ function lockedSpline(
 
 /**
  * 段平移路由总入口：按连线类型分派，返回路径 + 每个弯的抓手位置。
- *   肘线 smoothstep → 平移整段（正交，两端补垂线段）
+ *   肘线 smoothstep → 正交路径上每个 bend 是一个 vertex 偏移（v4 bend-vertex）
  *   曲线 default    → 端点切线锁定的平滑样条穿中间点
  *   直线 straight   → 尖角折线穿中间点
+ *
+ * bends 共享同一 (dx, dy) 平移量时 → 整条折线联动（拖一个 bend 整条线跟着移动）。
  */
 export function bendRoutePath(
   type: string | undefined,
@@ -853,7 +837,14 @@ export function bendRoutePath(
     };
   }
 
-  /* 肘线：先算基础正交路径，再逐段推开 */
+  /* 肘线：先算基础正交路径，再逐 bend 偏移 vertex（v4 bend-vertex）。
+     bends 按 t 升序已排好；依次 applyBendOrtho，每个 bend 替换 verts 里 bend.t
+     对应的那一个 vertex ——
+       · 共享 dx/dy 时（拖一个 bend 整条线联动）所有 vertex 同步偏移，整条折线平移；
+       · 不同 dx/dy 时（理论上）每个 bend 独立 vertex，局部变形。
+     注意：当前每段基础路径上的 vertex 数量有限，多次 apply 后后续 bend 可能命中
+     已被替换的 vertex —— 我们在 apply 里加 `if (idx === 0 || idx === n-1) return`
+     保护首尾端点，避免连线脱节点。 */
   const base = waypointRoutePath({ ax, ay, aSide, bx, by, bSide, points: [] });
   if (!base) return null;
   let verts = base.verts;

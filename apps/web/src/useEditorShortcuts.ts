@@ -19,6 +19,8 @@ interface ClipNode {
   kind: 'io-start' | 'io-end' | 'decision' | 'step';
   talk: { side: 'agent' | 'cust'; text: string }[];
   color?: { bg?: string; stroke?: string; text?: string } | null;
+  /** WP7-3d 锁尺寸：飞书导入的卡片原 w/h。复制要带着走，粘贴出来仍是同形状 → 居中/排版不丢 */
+  size?: { w: number; h: number };
   x: number;
   y: number;
 }
@@ -116,6 +118,9 @@ function buildClip(): ClipPayload | null {
     kind: (n.data?.kind as ClipNode['kind']) ?? 'step',
     talk: n.data?.talk ?? [],
     color: (n.data?.color as ClipNode['color']) ?? null,
+    /* 锁尺寸：复制带过去 → 粘贴出来仍是 keep-shape 居中卡片。
+       没尺寸（手动节点 / 老文档）就不带，向后兼容。 */
+    size: (n.data as { size?: { w: number; h: number } } | undefined)?.size,
     x: n.position.x,
     y: n.position.y,
   }));
@@ -163,6 +168,8 @@ function remapAndApply(payload: ClipPayload, atFlow: { x: number; y: number } | 
         kind: n.kind,
         talk: Array.isArray(n.talk) ? n.talk.map((t) => ({ ...t })) : [],
         ...(n.color ? { color: n.color } : {}),
+        /* 锁尺寸跟着复制走：粘贴出来的卡片仍按原 w/h 渲染 → 居中与排版一致 */
+        ...(n.size && n.size.w > 0 && n.size.h > 0 ? { size: n.size } : {}),
       },
       selected: true,
     };
