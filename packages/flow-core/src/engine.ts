@@ -496,8 +496,9 @@ export function estimateNodeSize(node: FlowNode, view: FlowView): { w: number; h
     view === 'flow' && !!data?.size && data.size.w > 0 && data.size.h > 0
       ? data.size
       : null;
-  /* 流程视图尺寸：宽度封顶 + 长文本换行增高（与 style.css、reflow 共用 nodeSize 规则） */
-  const flow = locked ?? flowCardSize(label);
+  /* 流程视图尺寸：宽度封顶 + 长文本换行增高（与 style.css、reflow 共用 nodeSize 规则）；
+     点1 自定义换行：wrapCols（每行 N 字）影响行数 → 同步进估算 */
+  const flow = locked ?? flowCardSize(label, data?.wrapCols);
   const w = flow.w;
   if (view === 'talk') {
     const rows = (data?.talk ?? []).filter((t) => t && t.text.trim());

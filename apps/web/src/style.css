@@ -585,6 +585,8 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   text-align: center;
   width: 100%;
   line-height: 1.45;
+  /* 点1：keep-shape（飞书导入卡）同样要保留手动/字数换行，normal 会折叠 \n */
+  white-space: pre-wrap;
 }
 .sop-node.keep-shape .pending-dot { position: absolute; top: 6px; left: 8px; }
 .sop-node[data-view='talk'] {
@@ -619,10 +621,13 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 }
 /* kind 小标保持加粗：正文降为常规后，靠小标承担层级识别 */
 .sop-sub { font-size: 10px; font-weight: 600; color: var(--ink-4); letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; }
-/* 流程视图：标签允许换行（配合节点 max-width），长文本变成多行而不是无限撑宽 */
+/* 流程视图：标签允许换行（配合节点 max-width），长文本变成多行而不是无限撑宽。
+   点1 自定义换行：white-space 必须 pre-wrap —— normal 会把编辑时敲的 \n 折叠成
+   空格，「手动换行」就永远显示不出来；pre-wrap 下手动 \n 与 wrapCols 硬折的 \n
+   都如实换行，超长行仍由 overflow-wrap:anywhere 兜底。 */
 .sop-node[data-view='flow'] .sop-flow { min-width: 0; }
 .sop-node[data-view='flow'] .sop-label {
-  white-space: normal;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   min-width: 0;
 }
@@ -852,6 +857,16 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   border-color: transparent;
   font-weight: 600;
 }
+/* 点2(b) 描述自动亮暗（与所在边同步，只作用 chip 自身 —— EdgeLabelRenderer
+   独立于 .react-flow__edge 子树，chain/边透明度都够不到它，必须单独给类）：
+   is-hit = 链路追踪命中 / is-miss = 链路外 / is-dim = 情景路线外压暗边 */
+.edge-chip.is-hit {
+  background: var(--route-label-bg, #dbe9fb);
+  color: var(--route-label-fg, var(--accent));
+  border-color: var(--accent);
+}
+.edge-chip.is-miss { opacity: 0.15; }
+.edge-chip.is-dim { opacity: 0.35; }
 .edge-chip.is-editing {
   max-width: 200px;
   background: var(--surface-1);

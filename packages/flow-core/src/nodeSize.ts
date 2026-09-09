@@ -31,10 +31,39 @@ export const FLOW_CHROME = 76;
 export const FLOW_CHAR_W = 13;
 
 /**
- * 按标签长度算卡片尺寸：短标签单行撑宽，长标签到顶换行增高。
- * @param label 节点标题（按字符数计，不是字节数）
+ * 按每行字数硬折行（点1 自定义换行 B 规则）：
+ * 先尊重文本里已有的 \n（手动换行 A 规则），再对每个超长段按 cols 个字（码点）切开。
+ * cols 缺失 / <2 → 原文返回。显示与尺寸估算共用，保证两处永远一致。
  */
-export function flowCardSize(label: string): { w: number; h: number } {
+export function wrapByCols(label: string, cols?: number): string {
+  const n =
+    typeof cols === 'number' && Number.isFinite(cols) && cols >= 2 ? Math.floor(cols) : 0;
+  if (!n) return label ?? '';
+  return (label ?? '')
+    .split('\n')
+    .map((seg) => {
+      const chars = [...seg];
+      const out: string[] = [];
+      for (let i = 0; i < chars.length; i += n) out.push(chars.slice(i, i + n).join(''));
+      return out.join('\n');
+    })
+    .join('\n');
+}
+
+/**
+ * 按标签长度算卡片尺寸：短标签单行撑宽，长标签到顶换行增高。
+ * 点1 自定义换行：label 里已有 \n（手动换行）或 wrapCols（每行 N 字）时，
+ * 以「最长一行」定宽、行数定高 —— 与 CSS pre-wrap 渲染一致。
+ * @param label 节点标题（按字符数计，不是字节数）
+ * @param wrapCols 每行字数（节点 data.wrapCols；缺省 = 不启用字数规则）
+ */
+export function flowCardSize(label: string, wrapCols?: number): { w: number; h: number } {
+  const lines = wrapByCols(label ?? '', wrapCols).split('\n');
+  if (lines.length > 1) {
+    const longest = Math.max(...lines.map((l) => [...l].length));
+    const w = Math.min(FLOW_W_MAX, Math.max(FLOW_W_MIN, longest * FLOW_CHAR_W + FLOW_CHROME));
+    return { w, h: FLOW_H_BASE + (lines.length - 1) * FLOW_LINE_H };
+  }
   const len = [...(label ?? '')].length;
   const oneLine = len * FLOW_CHAR_W + FLOW_CHROME;
   if (oneLine <= FLOW_W_MAX) {

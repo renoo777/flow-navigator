@@ -28,6 +28,7 @@ import {
   getBezierPath,
   getSmoothStepPath,
   getStraightPath,
+  useStore,
   type EdgeProps,
   Position,
 } from '@xyflow/react';
@@ -63,18 +64,58 @@ interface ManualEdgeData {
   _bSide?: AnchorSide;
   /** 标签是否高亮（路线主干），影响 chip 配色 */
   _lblActive?: boolean;
+  /** 点2(b) 自动亮暗：情景路线外（所在边被压暗）→ chip 跟着淡出 */
+  _lblDim?: boolean;
+  /** 点2(b) 自动亮暗：链路追踪结果（FlowCanvas 从 chain 类名推导传入） */
+  _chain?: 'hit' | 'miss';
+  /** 点2(a) 拖动偏移（画布坐标，相对线中点；持久化在 edge.data.labelOffset） */
+  _lblOff?: { dx: number; dy: number };
   /** 标签改名回调（由 FlowCanvas 注入；函数字段不参与持久化） */
   _onRename?: (edgeId: string, text: string) => void;
+  /** 点2(a) 拖动提交回调（由 FlowCanvas 注入） */
+  _onMoveLabel?: (edgeId: string, off: { dx: number; dy: number }) => void;
 }
 
 function ManualEdgeImpl(props: EdgeProps) {
   const d0 = (props.data ?? {}) as ManualEdgeData;
   const route = d0.route;
 
-  /* —— 连线说明标签：HTML chip（限宽换行 + 就地编辑） —— */
+  /* —— 连线说明标签：HTML chip（限宽换行 + 就地编辑 + 可拖动） —— */
   const labelText = typeof props.label === 'string' ? props.label : '';
   const [editing, setEditing] = useState(false);
   const chipRef = useRef<HTMLSpanElement>(null);
+  /* 点2(a) 拖动中的偏移用本地态渲染（跟手、不进历史），pointerup 一次性提交。
+     zoom 用于把屏幕位移换算成画布位移（chip 定位在画布坐标系）。 */
+  const zoom = useStore((s) => s.transform[2]);
+  const [dragOff, setDragOff] = useState<{ dx: number; dy: number } | null>(null);
+
+  const startChipDrag = useCallback(
+    (e: React.PointerEvent) => {
+      if (!props.selected || editing) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const base = d0._lblOff ?? { dx: 0, dy: 0 };
+      let last = base;
+      const onMove = (ev: PointerEvent) => {
+        last = {
+          dx: base.dx + (ev.clientX - startX) / zoom,
+          dy: base.dy + (ev.clientY - startY) / zoom,
+        };
+        setDragOff(last);
+      };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        setDragOff(null);
+        d0._onMoveLabel?.(props.id, last);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [props.selected, props.id, editing, d0, zoom]
+  );
 
   /* 进入编辑时灌一次初值并全选，之后内容交给浏览器管 ——
      不走 React 受控，否则每次输入都会把光标顶回开头。 */
@@ -159,6 +200,9 @@ function ManualEdgeImpl(props: EdgeProps) {
     else [path, lx, ly] = getSmoothStepPath({ ...pp, borderRadius: 10 });
   }
 
+  /* chip 最终偏移：拖动中用本地态，静止用持久值，都没有 = 线中点 */
+  const lblOff = dragOff ?? d0._lblOff ?? { dx: 0, dy: 0 };
+
   return (
     <>
       <BaseEdge
@@ -175,19 +219,24 @@ function ManualEdgeImpl(props: EdgeProps) {
           <div
             className={`edge-chip${d0._lblActive ? ' is-active' : ''}${
               editing ? ' is-editing' : ''
-            }`}
+            }${d0._lblDim ? ' is-dim' : ''}${
+              d0._chain === 'hit' ? ' is-hit' : d0._chain === 'miss' ? ' is-miss' : ''
+            }${dragOff ? ' is-dragging' : ''}`}
             style={{
-              transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`,
+              /* 点2(a)：中点 + 用户拖动偏移（拖动中用本地态，松手后读持久值） */
+              transform: `translate(-50%, -50%) translate(${lx + lblOff.dx}px, ${ly + lblOff.dy}px)`,
               /* 未选中时穿透：否则 chip 会挡住「拖线身改走向」这个高频操作。
                  选中后才可交互 —— 与飞书「选中连线说明才能拖动 / 编辑」一致。 */
               pointerEvents: props.selected || editing ? 'all' : 'none',
+              cursor: props.selected && !editing ? (dragOff ? 'grabbing' : 'grab') : undefined,
             }}
             data-testid="edge-chip"
-            title={props.selected ? '双击编辑连线说明' : undefined}
+            title={props.selected ? '拖动调整位置 · 双击编辑连线说明' : undefined}
             onDoubleClick={(e) => {
               e.stopPropagation();
               setEditing(true);
             }}
+            onPointerDown={startChipDrag}
           >
             {editing ? (
               <span

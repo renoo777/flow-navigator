@@ -114,6 +114,10 @@ export interface FlowCanvasProps {
   /* --- 右键菜单（B4：节点类型切换 + 删除）--- */
   onChangeKind: (nodeId: string, kind: NodeKind) => void;
   onDeleteNode: (nodeId: string) => void;
+  /** 点1 每行字数换行规则：cols=null 表示关闭（恢复自动换行） */
+  onChangeWrapCols: (nodeId: string, cols: number | null) => void;
+  /** 点2(a) 连线描述拖动提交（偏移写入 edge.data.labelOffset） */
+  onMoveLabel: (edgeId: string, off: { dx: number; dy: number }) => void;
   /** Q4 话术编辑入历史快照：TalkEditor 每次「添加/删除/失焦提交」前调用 */
   onTalkEdit?: () => void;
   /** 画布搜索（Build K-④）：定位到某节点（App 实现：选中 + fitView 平移过去） */
@@ -402,6 +406,8 @@ export function FlowCanvas({
   onDeleteSel,
   onChangeKind,
   onDeleteNode,
+  onChangeWrapCols,
+  onMoveLabel,
   onTalkEdit,
   onFocusNode,
   commands,
@@ -1293,6 +1299,16 @@ export function FlowCanvas({
           _et: e.type ?? 'smoothstep',
           ...(ap && sa ? { _ap: ap, _aSide: sa.side } : {}),
           ...(bp && ta ? { _bp: bp, _bSide: ta.side } : {}),
+          /* 点2(b) chip 自动亮暗：EdgeLabelRenderer 独立于边子树，chain/边透明度
+             够不到 chip，必须显式传状态（is-active 情景主干 / is-dim 路线外 / is-hit·is-miss 链路） */
+          _lblActive: act ? active : false,
+          _lblDim: !!dim,
+          _chain: chainCls === 'chain-hit' ? ('hit' as const) : chainCls === 'chain-miss' ? ('miss' as const) : undefined,
+          /* 点2(a) 拖动偏移：持久化在 edge.data.labelOffset（normalizeEdge 透传 data） */
+          ...((e.data as { labelOffset?: { dx: number; dy: number } } | null)?.labelOffset
+            ? { _lblOff: (e.data as { labelOffset: { dx: number; dy: number } }).labelOffset }
+            : {}),
+          _onMoveLabel: onMoveLabel,
         },
         /* 加宽命中带：2px 的线不该只有 2px 的可抓范围（RF 会从 edge 上读这个字段） */
         interactionWidth: 26,
@@ -1327,6 +1343,7 @@ export function FlowCanvas({
     chain,
     chainRes,
     anchorOf,
+    onMoveLabel,
     anchorBoxes,
     onEdgeRename,
   ]);
@@ -1908,6 +1925,26 @@ export function FlowCanvas({
                 转为{o.label}
               </button>
             ))}
+          {/* 点1 自定义换行：每行字数规则（null = 关闭，恢复到宽度自动折行） */}
+          {!ctxMenu.expr && (
+            <>
+              <div className="ctx-sep" />
+              <div className="ctx-head">每行字数</div>
+              {[null, 4, 6, 8, 12].map((c) => (
+                <button
+                  key={String(c)}
+                  className="ctx-item"
+                  data-testid={`wrap-cols-${c ?? 'off'}`}
+                  onClick={() => {
+                    onChangeWrapCols(ctxMenu.nodeId, c);
+                    setCtxMenu(null);
+                  }}
+                >
+                  {c === null ? '自动换行（不按字数）' : `每行 ${c} 字`}
+                </button>
+              ))}
+            </>
+          )}
           {!ctxMenu.expr && <div className="ctx-sep" />}
           <button
             className="ctx-item danger"

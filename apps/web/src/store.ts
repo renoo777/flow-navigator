@@ -199,6 +199,12 @@ function normalizeNode(raw: unknown): SopFlowNode | null {
     Number((d.size as Record<string, unknown>).h) > 0
       ? { w: Math.round(Number((d.size as Record<string, unknown>).w)), h: Math.round(Number((d.size as Record<string, unknown>).h)) }
       : null;
+  /* 点1 每行字数：2~30 收敛为整数，非法值直接丢弃（不启用） */
+  const wrapColsRaw = Number(d.wrapCols);
+  const wrapCols =
+    Number.isFinite(wrapColsRaw) && wrapColsRaw >= 2 && wrapColsRaw <= 30
+      ? Math.round(wrapColsRaw)
+      : null;
   return {
     id: n.id,
     type: 'sop',
@@ -214,6 +220,7 @@ function normalizeNode(raw: unknown): SopFlowNode | null {
       ...(talkDir ? { talkDir } : {}),
       ...(talkW ? { talkW } : {}),
       ...(size ? { size } : {}),
+      ...(wrapCols ? { wrapCols } : {}),
     },
     selected: false,
   };
@@ -545,6 +552,8 @@ export interface AppState {
   /** WP4：新建自由表达节点（便签 note / 贴图 image / 标注 label），入历史并进入编辑态 */
   addExprNode: (type: ExprType, x: number, y: number) => void;
   renameEdge: (edgeId: string, label: string) => void;
+  /** 点2(a) 连线描述拖动提交：偏移量写入 edge.data.labelOffset（画布坐标） */
+  moveEdgeLabel: (edgeId: string, off: { dx: number; dy: number }) => void;
   afterDelete: (removedNodeIds: string[], removedEdgeIds: string[]) => void;
   /** 拖拽连线端点改连（入历史） */
   onReconnect: (oldEdge: Edge, conn: Connection) => void;
@@ -567,6 +576,8 @@ export interface AppState {
   deleteNodes: (ids: string[]) => void;
   /** 转换节点 kind（右键菜单专用，io-start/io-end 唯一性约束，入历史） */
   changeKind: (nodeId: string, kind: NodeKind) => void;
+  /** 点1 每行字数换行规则：cols=null 关闭（恢复按宽度自动折行）。入历史 */
+  setWrapCols: (nodeId: string, cols: number | null) => void;
   /** 点空白清空全部选中（不入历史） */
   clearSelection: () => void;
   /** 按方向键微调选中节点（入历史由调用方控制 repeat） */
@@ -1026,6 +1037,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
+  /** 点2(a) 连线描述拖动：把 chip 拖离线中点的偏移量（画布坐标）写进 edge.data。
+   *  normalizeEdge 对 data 整体透传 → 免费获得持久化；拖完一次性提交（拖动过程
+   *  用组件本地态渲染，不进历史）。 */
+  moveEdgeLabel: (edgeId, off) => {
+    pushHistory();
+    set((st) => ({
+      edges: st.edges.map((e) =>
+        e.id === edgeId
+          ? { ...e, data: { ...(e.data ?? {}), labelOffset: off } }
+          : e
+      ),
+    }));
+  },
+
   afterDelete: (removedNodeIds, removedEdgeIds) =>
     set((st) => ({
       edges: st.edges.filter(
@@ -1186,6 +1211,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       };
     });
+  },
+
+  /** 点1 每行字数：null = 关闭规则（字段从 data 里删除）；数字 = 每行 N 字硬折。
+   *  显示与尺寸估算都吃 data.wrapCols（nodeSize.ts / SopNode），这里只管落库。 */
+  setWrapCols: (nodeId, cols) => {
+    pushHistory();
+    set((st) => ({
+      nodes: st.nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const data = { ...n.data } as Record<string, unknown>;
+        if (cols === null) delete data.wrapCols;
+        else data.wrapCols = cols;
+        return { ...n, data: data as typeof n.data };
+      }),
+    }));
   },
 
   clearSelection: () =>

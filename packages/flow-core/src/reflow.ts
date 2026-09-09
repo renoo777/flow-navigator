@@ -21,6 +21,8 @@ export interface ReflowNode {
   y: number;
   /** WP7-3d 锁尺寸（飞书导入卡原始 w/h）；缺省 → 按 label 文本估算 */
   size?: { w: number; h: number };
+  /** 点1 每行字数换行规则；缺省 → 不启用 */
+  wrapCols?: number;
 }
 
 export interface ReflowEdge {
@@ -46,7 +48,7 @@ export interface ReflowOptions {
  *  （与 style.css / estimateNodeSize 共用 nodeSize 规则） */
 function sizeOf(n: ReflowNode): { w: number; h: number } {
   if (n.size && n.size.w > 0 && n.size.h > 0) return n.size;
-  return flowCardSize(n.label || '');
+  return flowCardSize(n.label || '', n.wrapCols);
 }
 
 /**

@@ -162,6 +162,8 @@ function EditorScreen() {
     deleteSelected,
     clearSelection,
     changeKind,
+    setWrapCols,
+    moveEdgeLabel,
     deleteNodes,
     toggleTheme,
   } = useAppStore();
@@ -366,6 +368,10 @@ function EditorScreen() {
         y: n.position.y,
         /* 锁尺寸节点把真实 w/h 传给布局引擎（空隙按飞书卡实际大小拉开） */
         ...((n.data as SopNodeData).size ? { size: (n.data as SopNodeData).size } : {}),
+        /* 点1：每行字数规则影响行数 → 估算高度要同步 */
+        ...((n.data as SopNodeData).wrapCols
+          ? { wrapCols: (n.data as SopNodeData).wrapCols }
+          : {}),
       }));
       const reflowEdges = g.edges
         .map((e) => ({ source: remap.get(e.source) ?? '', target: remap.get(e.target) ?? '' }))
@@ -733,6 +739,8 @@ function EditorScreen() {
           onPaintSel={handlePaintSel}
           onDeleteSel={deleteSelected}
           onChangeKind={changeKind}
+          onChangeWrapCols={setWrapCols}
+          onMoveLabel={moveEdgeLabel}
           onDeleteNode={(id) => deleteNodes([id])}
           onTalkEdit={mark}
           onFocusNode={handleFocusNode}

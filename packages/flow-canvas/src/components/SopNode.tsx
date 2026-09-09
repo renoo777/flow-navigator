@@ -12,6 +12,7 @@ import {
   TALK_W_MAX,
   TALK_W_MIN,
   TALK_W_DEFAULT,
+  wrapByCols,
   type TalkDir,
   type TalkRoles,
 } from '@flow/core';
@@ -51,6 +52,8 @@ export type SopNodeData = {
   /** WP7-3d 导入锁尺寸：飞书解析出的卡片原始 w/h（flow view 渲染与布局估算优先读它，
    *  还原飞书卡形状；不设 = 文本自适应扁卡，手动节点/旧文档保持原样） */
   size?: { w: number; h: number };
+  /** 点1 自定义换行：每行 N 个字自动断行（缺省 = 不启用；编辑时敲的手动换行始终生效） */
+  wrapCols?: number;
   /** 上下游链路追踪结果（FlowCanvas 注入）：root=起点 / hit=命中 / miss=链路外 */
   chain?: 'root' | 'hit' | 'miss';
   /** Build M：情景路线已完全确定（沿途无待赋值变量）→ 最高强调级 */
@@ -337,7 +340,10 @@ export function SopNode({ id, data, selected }: NodeProps) {
             data-testid={editing ? 'node-label-editor' : undefined}
             onBlur={editing ? endEdit : undefined}
           >
-            {label}
+            {/* 点1 自定义换行：静态态按「每行 N 字」规则硬折显示（wrapByCols 尊重
+                已有 \n）；编辑态显示原文 —— 用户看到并编辑的是未加工文本，避免
+                显示层折行混进内容里越编越长。CSS pre-wrap 保证两种 \n 都如实显示。 */}
+            {editing ? label : wrapByCols(label, d.wrapCols)}
           </span>
           <span className="sop-sub">{KIND_TAG[kind] || ''}</span>
         </div>

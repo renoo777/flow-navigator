@@ -37,6 +37,8 @@ export interface SopData {
   talkW?: number;
   /** WP7-3d 锁尺寸（飞书导入卡原始 w/h）：渲染与布局估算优先读它还原飞书形状 */
   size?: { w: number; h: number };
+  /** 点1 自定义换行：每行 N 个字自动断行（缺省 = 不启用；手动 \n 始终生效） */
+  wrapCols?: number;
 }
 
 /** 画布节点（与 React Flow Node 解耦，纯数据） */
