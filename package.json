@@ -1,7 +1,7 @@
 {
   "name": "flow-navigator",
   "private": true,
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Flow Navigator · 变量导航器：把复杂流程图按变量取值实时收敛成一条可执行路线",
   "workspaces": [
     "apps/*",
