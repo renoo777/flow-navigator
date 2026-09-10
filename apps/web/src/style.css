@@ -119,6 +119,12 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+/* 0910 · Mac 触控板双指左右滑 → 浏览器「滑动翻页」（Overscroll history navigation），
+   会把正在编辑的整页带走。none 关掉所有「滚动溢出」类系统手势：
+   横向滑动翻页 / 下拉刷新 / 橡皮筋回弹（Chrome、Edge 这一条就够）。
+   ⚠️ Safari 官方 bug 240892 记录 overscroll-behavior 挡不住 Safari 的滑动翻页，
+   由 noSwipeNav.ts 的 wheel preventDefault 兜底 —— 两层缺一不可。 */
+html, body { overscroll-behavior: none; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
