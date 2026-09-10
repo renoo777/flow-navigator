@@ -179,6 +179,8 @@ export function VariableDock({
   const hasAssignments = Object.keys(assignments).length > 0;
   /** 情景动作只在情景导航模式出现 */
   const showNavActions = mode === 'scenario';
+  /** 0910 修复：未启用的候选数（>0 时「管理变量」按钮降级为琥珀色「＋N 个候选」提示） */
+  const pendingCandidates = Math.max(0, candidateCount - varsCount);
   /** 编辑态跨视图生效：结构层 / 话术层 都可重排与局部整理 */
   const canEditGraph = editable && mode === 'edit';
 
@@ -312,12 +314,9 @@ export function VariableDock({
           快捷键已由各按钮 title 承载，常驻文案属噪声，与「合并式精简布局」偏好冲突 */}
 
       {/* 变量列表（启用集） */}
-      <div className="var-head">
+      <div className="var-head" data-testid="var-head">
         {/* 计数跟随列表（级联隐藏后只见「当前路线上的变量」，与下方条目一致） */}
         <span className="vh-title">变量 {shownVars.length > 0 ? `(${shownVars.length})` : ''}</span>
-        {editable && candidateCount > varsCount && (
-          <span className="vh-hint">另有 {candidateCount - varsCount} 个候选</span>
-        )}
         <span className="dock-top-spacer" />
         {/* 情景导航：视角切换 + 重置（原「清除赋值」在底部易被忽略，上移到变量区头部） */}
         {showNavActions && (
@@ -342,9 +341,22 @@ export function VariableDock({
             </button>
           </>
         )}
+        {/* 0910 合并入口：原「另有 N 个候选」是纯提示、旁边又有一颗「管理变量」，
+            两者点击动作完全一样（都打开候选管理面板）。而 Dock 固定 292px、内容区只有 259px，
+            变量 + 提示 + 仅路径 + 重置 + 管理变量的自然宽约 291px → 这一行溢出 32px，
+            每个子项都被 flex 压成两行竖排（正是「文字变形、按钮变形」）。
+            合并成一颗按钮后省下约 64px，语义也更直白：有待办就显示琥珀色计数，否则是常规入口。 */}
         {editable && candidateCount > 0 && (
-          <button className="vh-manage" onClick={onManageVars}>
-            管理变量
+          <button
+            className={`vh-manage${pendingCandidates > 0 ? ' has-pending' : ''}`}
+            onClick={onManageVars}
+            title={
+              pendingCandidates > 0
+                ? `还有 ${pendingCandidates} 个分支可设为变量 — 点击管理（勾选 / 停用）`
+                : '管理变量：勾选 / 停用参与导航的分支节点'
+            }
+          >
+            {pendingCandidates > 0 ? `＋${pendingCandidates} 个候选` : '管理变量'}
           </button>
         )}
       </div>
