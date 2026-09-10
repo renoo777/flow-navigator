@@ -220,7 +220,12 @@ function roundRect(
   ctx.closePath();
 }
 
-/** 画一帧。ctx 已按「视口坐标 → canvas」映射好（调用方 setTransform）。 */
+/** 画一帧。ctx 已按「视口坐标 → canvas」映射好（调用方 setTransform）。
+ *  0921 可读性下限：竖/横长图 scale 可能被压到 0.1～0.4，若字号/线宽/虚线
+ *  继续跟着 scale 缩，文字会小到 1.7px 直接在 GIF 量化中消失。
+ *  px = 视觉像素因子（不低于 0.55）：字号/线宽/辉光/虚线用它；
+ *  几何坐标（节点矩形、path）仍用真实 scale —— 物理位置不变，
+ *  代价是小图中字号可能略微溢出节点框，但「看得到字」远比「框里空白」重要。 */
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
   geo: FlowGeometry,
@@ -228,6 +233,7 @@ export function drawFrame(
   scale: number,
 ): void {
   const p = geo.palette;
+  const px = Math.max(scale, 0.55);
   const reveal = easeInOut(Math.max(0, Math.min(1, state.reveal)));
 
   // —— 背景 ——
@@ -252,13 +258,13 @@ export function drawFrame(
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = stroke;
-    ctx.lineWidth = width * scale;
+    ctx.lineWidth = Math.max(width * scale, 0.8);
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     if (active) {
       // 连续流动虚线：dashPhase 逐帧递增强制「沿线流动」
-      ctx.setLineDash([DASH_LEN * scale, DASH_GAP * scale]);
-      ctx.lineDashOffset = -state.dashPhase * scale;
+      ctx.setLineDash([DASH_LEN * px, DASH_GAP * px]);
+      ctx.lineDashOffset = -state.dashPhase * px;
     }
     const path = new Path2D(e.d);
     ctx.stroke(path);
@@ -282,12 +288,13 @@ export function drawFrame(
     const active = state.activeEdges.has(e.id);
     ctx.save();
     ctx.globalAlpha = active ? 1 : DIM;
-    ctx.font = `${Math.round(11 * scale)}px system-ui, -apple-system, sans-serif`;
+    const chipFont = Math.max(Math.round(11 * px), 7);
+    ctx.font = `${chipFont}px system-ui, -apple-system, sans-serif`;
     const tw = ctx.measureText(e.label).width;
-    const padX = 6 * scale;
+    const padX = 6 * px;
     const bw = tw + padX * 2;
-    const bh = 18 * scale;
-    roundRect(ctx, e.lx - bw / 2, e.ly - bh / 2, bw, bh, 5 * scale);
+    const bh = Math.max(18 * scale, chipFont * 1.4);
+    roundRect(ctx, e.lx - bw / 2, e.ly - bh / 2, bw, bh, 5 * px);
     ctx.fillStyle = active ? p.routeLabelBg : p.surface2;
     ctx.fill();
     ctx.fillStyle = active ? p.routeLabelFg : p.ink3;
@@ -308,7 +315,7 @@ export function drawFrame(
 
     // 活跃节点辉光（苹果滑块式柔和外阴影）
     if (active) {
-      const glow = (prev ? 14 : 14 * reveal) * scale + (state.routeDone ? 6 * scale : 0);
+      const glow = (prev ? 14 : 14 * reveal) * px + (state.routeDone ? 6 * px : 0);
       ctx.shadowColor = p.edgeRoute;
       ctx.shadowBlur = glow;
     }
@@ -337,23 +344,24 @@ export function drawFrame(
       ctx.restore();
     }
 
-    // 标签
+    // 标签：字号下限 8px，行高随实际字号走；scale 太小时减少折行数避免溢出成灾
+    const fontPx = Math.max(Math.round(13 * px), 8);
     ctx.fillStyle = p.ink;
-    ctx.font = `${Math.round(13 * scale)}px system-ui, -apple-system, sans-serif`;
+    ctx.font = `${fontPx}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const text = n.label || '';
-    const maxW = w - 16 * scale;
-    // 简单按换行符/长度折行（最多 3 行）
-    const lines = wrapLabel(text, maxW, ctx);
-    const lh = 15 * scale;
+    const maxW = w - 12 * px;
+    const maxLines = scale >= 0.5 ? 3 : scale >= 0.3 ? 2 : 1;
+    const lines = wrapLabel(text, maxW, ctx, maxLines);
+    const lh = Math.max(15 * scale, fontPx * 1.25);
     const startY = y + h / 2 - ((lines.length - 1) * lh) / 2;
     lines.forEach((ln, i) => ctx.fillText(ln, x + w / 2, startY + i * lh));
     ctx.restore();
   }
 }
 
-function wrapLabel(text: string, maxW: number, ctx: CanvasRenderingContext2D): string[] {
+function wrapLabel(text: string, maxW: number, ctx: CanvasRenderingContext2D, maxLines = 3): string[] {
   if (!text.includes('\n') && ctx.measureText(text).width <= maxW) return [text];
   const out: string[] = [];
   const hard = text.split('\n');
@@ -368,7 +376,7 @@ function wrapLabel(text: string, maxW: number, ctx: CanvasRenderingContext2D): s
       }
     }
     out.push(cur);
-    if (out.length >= 3) break;
+    if (out.length >= maxLines) break;
   }
-  return out.slice(0, 3);
+  return out.slice(0, maxLines);
 }

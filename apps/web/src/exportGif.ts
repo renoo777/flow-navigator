@@ -40,18 +40,14 @@ export interface ExportGifOptions {
   backgroundColor?: string;
 }
 
-/** 渲染画布尺寸（4:3；canvas 直绘很便宜，可上分辨率换清晰度） */
-const OUT_W = 820;
-const OUT_H = 615;
-/** 内容边距 */
-const MARGIN = 28;
-/** 循环帧数与帧间隔：48 帧 × 50ms = 2.4s 一轮（20fps，浏览器普遍按实际播放） */
-const LOOP_FRAMES = 48;
-const PLAY_MS = 50;
+/** 0921 WYSIWYG 取景：画布 = 当前视口尺寸。
+ *  历史：v1/v2 写死 820×615，竖长图 scale≈0.13 → 文字 1.7px 量化后消失（「模糊 + 没字」）；
+ *  中间版改为整图自适应，竖长图仍被压到 320×1600、字号 8px（屏幕观感依然糊）。
+ *  最终按用户原话「以页面现在情景演练当中显示的状态导出」改为所见即所得。 */
+const LONG_MAX = 1600;
 /** 一轮里虚线走几个周期（3 个 × 16px = 48px，除以 48 帧 → 每帧 1px，约 20px/s，
  *  与画布上 CSS dash-flow 的 ~17.8px/s 观感一致） */
 const DASH_CYCLES = 3;
-const DASH_STEP = (DASH_CYCLES * DASH_CYCLE) / LOOP_FRAMES;
 
 interface GifEncoderLike {
   writeFrame: (index: Uint8Array, w: number, h: number, opts?: object) => void;
@@ -75,6 +71,29 @@ export async function exportFlowGif(opts: ExportGifOptions): Promise<void> {
   const geo = readGeometry(rf);
   if (!geo.nodes.length) throw new Error('画布是空的，先画点东西再导出 GIF');
 
+  /* 0921 WYSIWYG 取景：按「当前视口」导出（用户："以页面现在情景演练当中显示的状态导出"）。
+   *  此前是整图取景 —— 竖长图（bbox 3700+）被压到长边 1600，节点只剩 63×17px、
+   *  字号 8px，屏幕上就是「糊 + 像没字」。所见即所得后，字与屏幕一致清晰。 */
+  const vp = rf.getViewport();
+  const container =
+    (document.querySelector('.canvas-wrap .react-flow') as HTMLElement | null) ??
+    (document.querySelector('.react-flow') as HTMLElement | null);
+  const cw = container?.clientWidth || 1000;
+  const ch = container?.clientHeight || 700;
+  const outScale = Math.min(1, LONG_MAX / Math.max(cw, ch));
+  const OUT_W = Math.max(200, Math.round(cw * outScale));
+  const OUT_H = Math.max(200, Math.round(ch * outScale));
+  /* 与 React Flow viewport 变换完全同构：flow 坐标 → 屏幕像素 */
+  const scale = vp.zoom * outScale;
+  const tx = vp.x * outScale;
+  const ty = vp.y * outScale;
+  /* 帧数自适应：画面越大文件越肥，>1.1MP 时降到 36 帧（无缝性不受影响，
+   * DASH_STEP 是按帧数均分整周期算的，总位移仍是整数个 DASH_CYCLE） */
+  const LOOP_FRAMES = OUT_W * OUT_H > 1_100_000 ? 36 : 48;
+  const PLAY_MS = 50;
+  /** 每帧虚线相位步长：均分整数个周期 → 循环无缝（与帧数无关） */
+  const DASH_STEP = (DASH_CYCLES * DASH_CYCLE) / LOOP_FRAMES;
+
   const { GIFEncoder, quantize, applyPalette } = await import('gifenc');
 
   /* 离屏 canvas（画布直绘，无 DOM 克隆） */
@@ -83,15 +102,6 @@ export async function exportFlowGif(opts: ExportGifOptions): Promise<void> {
   canvas.height = OUT_H;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('取不到绘制上下文');
-
-  const scale = Math.min(
-    (OUT_W - 2 * MARGIN) / Math.max(1, geo.bbox.w),
-    (OUT_H - 2 * MARGIN) / Math.max(1, geo.bbox.h),
-  );
-  const contentW = geo.bbox.w * scale;
-  const contentH = geo.bbox.h * scale;
-  const tx = (OUT_W - contentW) / 2 - geo.bbox.x * scale;
-  const ty = (OUT_H - contentH) / 2 - geo.bbox.y * scale;
 
   const frames: { index: Uint8Array; palette: number[][] }[] = [];
   const delays: number[] = [];
