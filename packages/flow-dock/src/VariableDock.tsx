@@ -57,6 +57,8 @@ export interface DockProps {
   onExport: () => void;
   /** B2 PNG 图片导出（懒加载 html-to-image） */
   onExportPng: () => void;
+  /** 0922 · PNG 导出进行中（超清大图要几十秒，按钮禁用 + 显示「导出中…」） */
+  pngBusy: boolean;
   /** 0918 · 情景演示动画导出 GIF（按路线重放逐帧截屏；仅 scenario 有意义） */
   onExportGif: () => void;
   /** GIF 导出进行中（按钮禁用 + 显示进度） */
@@ -144,6 +146,7 @@ export function VariableDock({
   onRemoveVar,
   onExport,
   onExportPng,
+  pngBusy,
   onExportGif,
   gifBusy,
   gifProgress,
@@ -523,8 +526,8 @@ export function VariableDock({
         <button className="ghost" onClick={onExport} title="导出当前流程图为 JSON 备份">
           导出 JSON
         </button>
-        <button className="ghost" onClick={onExportPng} disabled={nodesCount === 0} data-testid="export-png-btn" title="导出当前流程图为 PNG 图片（含变量名，可直接喂公众号）">
-          导出 PNG
+        <button className="ghost" onClick={onExportPng} disabled={nodesCount === 0 || pngBusy} data-testid="export-png-btn" title="导出当前流程图为 PNG 图片（按内容原始尺寸超采样，大图也清晰）">
+          {pngBusy ? '导出中…' : '导出 PNG'}
         </button>
         <button
           className="ghost"

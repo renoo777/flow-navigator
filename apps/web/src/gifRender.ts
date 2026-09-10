@@ -241,46 +241,7 @@ export function drawFrame(
   ctx.fillRect(-1e5, -1e5, 2e5, 2e5);
 
   // —— 边（先画全部，再叠活跃边，保证活跃边压在上方）——
-  const drawEdge = (e: EdgeGeo, active: boolean, prevActive: boolean) => {
-    let alpha: number;
-    let stroke: string;
-    let width: number;
-    if (active) {
-      const a = prevActive ? 1 : reveal; // 新点亮：从 dim 渐入
-      alpha = 0.2 + 0.8 * a;
-      stroke = p.edgeRoute;
-      width = 2.8;
-    } else {
-      alpha = state.focusAll ? 0.5 : DIM;
-      stroke = p.edgeOff;
-      width = 1.4;
-    }
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = Math.max(width * scale, 0.8);
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    if (active) {
-      // 连续流动虚线：dashPhase 逐帧递增强制「沿线流动」
-      ctx.setLineDash([DASH_LEN * px, DASH_GAP * px]);
-      ctx.lineDashOffset = -state.dashPhase * px;
-    }
-    const path = new Path2D(e.d);
-    ctx.stroke(path);
-    ctx.setLineDash([]);
-    ctx.restore();
-  };
-
-  for (const e of geo.edges) {
-    const active = state.activeEdges.has(e.id);
-    const prev = state.prevEdges.has(e.id);
-    if (!active) drawEdge(e, false, prev);
-  }
-  for (const e of geo.edges) {
-    const active = state.activeEdges.has(e.id);
-    if (active) drawEdge(e, true, state.prevEdges.has(e.id));
-  }
+  drawEdgeLayer(ctx, geo, state, scale);
 
   // —— 边标签 chip ——
   for (const e of geo.edges) {
@@ -358,6 +319,66 @@ export function drawFrame(
     const startY = y + h / 2 - ((lines.length - 1) * lh) / 2;
     lines.forEach((ln, i) => ctx.fillText(ln, x + w / 2, startY + i * lh));
     ctx.restore();
+  }
+}
+
+/**
+ * 只画「连线层」（含流动虚线），不画背景 / 节点 / chip。
+ *
+ * 0922 用途：GIF 导出改为「html-to-image 采一张矢量高清底图（节点文字是真 DOM 文字，
+ * 再大再多的节点也清晰）+ 逐帧只重画连线层做虚线流动」。
+ * 绘制顺序 = 先画边、再把底图盖上去 —— 底图背景透明、节点不透明，
+ * 于是节点自然把连线挡住，与画布上的层次完全一致。
+ */
+export function drawEdgeLayer(
+  ctx: CanvasRenderingContext2D,
+  geo: FlowGeometry,
+  state: FrameState,
+  scale: number,
+): void {
+  const p = geo.palette;
+  const px = Math.max(scale, 0.55);
+  const reveal = easeInOut(Math.max(0, Math.min(1, state.reveal)));
+
+  const drawEdge = (e: EdgeGeo, active: boolean, prevActive: boolean) => {
+    let alpha: number;
+    let stroke: string;
+    let width: number;
+    if (active) {
+      const a = prevActive ? 1 : reveal; // 新点亮：从 dim 渐入
+      alpha = 0.2 + 0.8 * a;
+      stroke = p.edgeRoute;
+      width = 2.8;
+    } else {
+      alpha = state.focusAll ? 0.5 : DIM;
+      stroke = p.edgeOff;
+      width = 1.4;
+    }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = Math.max(width * scale, 0.8);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if (active) {
+      // 连续流动虚线：dashPhase 逐帧递增强制「沿线流动」
+      ctx.setLineDash([DASH_LEN * px, DASH_GAP * px]);
+      ctx.lineDashOffset = -state.dashPhase * px;
+    }
+    const path = new Path2D(e.d);
+    ctx.stroke(path);
+    ctx.setLineDash([]);
+    ctx.restore();
+  };
+
+  for (const e of geo.edges) {
+    const active = state.activeEdges.has(e.id);
+    const prev = state.prevEdges.has(e.id);
+    if (!active) drawEdge(e, false, prev);
+  }
+  for (const e of geo.edges) {
+    const active = state.activeEdges.has(e.id);
+    if (active) drawEdge(e, true, state.prevEdges.has(e.id));
   }
 }
 

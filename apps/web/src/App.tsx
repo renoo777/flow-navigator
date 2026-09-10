@@ -472,14 +472,18 @@ function EditorScreen() {
     [pendingImport, rf, relayout, defaultEdgeType]
   );
 
-  /** B2 PNG 图片导出：按节点 bounds 计算视口 + 懒加载 html-to-image */
+  /** B2 PNG 图片导出：内容 1:1 + 超采样（0922 高清重做）+ 懒加载 html-to-image */
+  const [pngBusy, setPngBusy] = useState(false);
   const handleExportPng = useCallback(async () => {
     const el = document.querySelector('.canvas-wrap .react-flow__viewport') as HTMLElement | null;
     if (!el) return;
+    setPngBusy(true);
     try {
       await exportFlowPng(rf, el, docName);
     } catch (e) {
       window.alert(`PNG 导出失败：${(e as Error)?.message ?? e}`);
+    } finally {
+      setPngBusy(false);
     }
   }, [rf, docName]);
 
@@ -747,6 +751,7 @@ function EditorScreen() {
         onRemoveVar={toggleVarEnabled}
         onExport={handleExport}
         onExportPng={() => void handleExportPng()}
+        pngBusy={pngBusy}
         onExportGif={() => void handleExportGif()}
         gifBusy={!!gifExport}
         gifProgress={gifExport ? `${gifExport.done}/${gifExport.total}` : null}

@@ -1231,6 +1231,14 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
   from { opacity: 0; scale: 0.94; }
   to { opacity: 1; scale: 1; }
 }
+/* GIF 导出采底图瞬间挂在 .react-flow__viewport 上（只持续几帧）：
+   把 DOM 连线描边设为透明（连线由 canvas 逐帧重画成流动虚线），并停掉 dash 动画，
+   避免采到随机相位的静态虚线。箭头 marker 用 fill 绘制，不受 stroke 影响，保留。 */
+.gif-export .react-flow__edge-path {
+  stroke: transparent !important;
+  animation: none !important;
+}
+
 /* 链路连线流动（上下游高亮时用）：dash 沿路径行进，指示走向。
    注意：位移 -16 意味着所有使用本动画的 stroke-dasharray 周期必须整除 16
    （如 10 6 / 8 8），否则每圈复位虚线会跳格、看起来一卡一卡。 */
