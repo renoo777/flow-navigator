@@ -31,6 +31,7 @@ import {
   type FlowView,
   type NodeKind,
   type ScenarioStep,
+  type RichSegment,
 } from '@flow/core';
 import {
   EDGE_TYPE_DEFAULT,
@@ -205,13 +206,16 @@ function normalizeNode(raw: unknown): SopFlowNode | null {
     Number.isFinite(wrapColsRaw) && wrapColsRaw >= 2 && wrapColsRaw <= 30
       ? Math.round(wrapColsRaw)
       : null;
+  const label = typeof d.label === 'string' && d.label.trim() ? d.label : '未命名';
+  /* 0920 标题富文本片段：必须持久化，否则刷新后标题样式全丢 */
+  const labelSegments = cleanLabelSegments(d.labelSegments, label);
   return {
     id: n.id,
     type: 'sop',
     position: { x: Number(pos.x) || 0, y: Number(pos.y) || 0 },
     ...(posByView ? { posByView } : {}),
     data: {
-      label: typeof d.label === 'string' && d.label.trim() ? d.label : '未命名',
+      label,
       kind,
       talk,
       editing: false,
@@ -221,9 +225,32 @@ function normalizeNode(raw: unknown): SopFlowNode | null {
       ...(talkW ? { talkW } : {}),
       ...(size ? { size } : {}),
       ...(wrapCols ? { wrapCols } : {}),
+      ...(labelSegments ? { labelSegments } : {}),
     },
     selected: false,
   };
+}
+
+/** 0920 清洗标题富文本片段。
+ *  双重守卫：① 形状合法（每项必须是 {text, bold?, color?}）；
+ *  ② **拼回来必须严格等于 label** —— 一旦不等就整组丢弃退回纯文本，
+ *  宁可丢样式，也绝不允许样式错位到其他字上。 */
+function cleanLabelSegments(raw: unknown, label: string): RichSegment[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const segs: RichSegment[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') return null;
+    const s = item as Record<string, unknown>;
+    if (typeof s.text !== 'string') return null;
+    const seg: RichSegment = { text: s.text };
+    if (s.bold === true) seg.bold = true;
+    if (typeof s.color === 'string' && /^#[0-9a-f]{6}$/i.test(s.color)) seg.color = s.color.toLowerCase();
+    else if (s.color !== undefined) return null; // 颜色格式非法 → 整组丢弃，避免存脏值
+    segs.push(seg);
+  }
+  if (segs.map((s) => s.text).join('') !== label) return null;
+  /* 没携带任何样式就退化为空（省存储，等价于纯文本） */
+  return segs.some((s) => s.bold || s.color) ? segs : null;
 }
 
 /** 清洗自定义说话方称呼：只收非空字符串，空值丢弃走默认「客服 / 客户」 */

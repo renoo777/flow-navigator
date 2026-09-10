@@ -1670,7 +1670,10 @@ export function FlowCanvas({
         deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
         snapToGrid={editable && snapToGrid}
         snapGrid={[16, 16]}
-        minZoom={0.25}
+        /* 0920 · 缩放下限从 0.25 放到 0.02：复杂大图（几十上百节点、横向几千 px）
+         * 在 0.25 就被夹住，缩到最小仍看不全；fitView 同样受此约束会"装不下"。
+         * 0.02 = 视口能容纳约 5 万 px 宽的图，足够现实中所有流程图。 */
+        minZoom={0.02}
         fitView
         fitViewOptions={{ padding: 0.14 }}
         proOptions={{ hideAttribution: true }}

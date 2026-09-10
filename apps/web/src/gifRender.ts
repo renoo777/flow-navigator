@@ -75,6 +75,13 @@ export interface FrameState {
 
 const DIM = 0.16;
 
+/** 0920 · 流动虚线的周期常量（虚线段长 + 间隔）。
+ *  必须导出给 exportGif：循环 GIF 要让「总位移 = 整数个周期」才能首尾无缝，
+ *  否则每圈复位时虚线会跳一下（看着像卡顿）。 */
+export const DASH_LEN = 9;
+export const DASH_GAP = 7;
+export const DASH_CYCLE = DASH_LEN + DASH_GAP; /* 16 */
+
 function cssVar(name: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback;
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -250,8 +257,7 @@ export function drawFrame(
     ctx.lineCap = 'round';
     if (active) {
       // 连续流动虚线：dashPhase 逐帧递增强制「沿线流动」
-      const dash = 9 * scale;
-      ctx.setLineDash([dash, dash * 0.8]);
+      ctx.setLineDash([DASH_LEN * scale, DASH_GAP * scale]);
       ctx.lineDashOffset = -state.dashPhase * scale;
     }
     const path = new Path2D(e.d);

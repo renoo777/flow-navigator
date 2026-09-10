@@ -650,6 +650,55 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .sop-talk-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; }
 .tk-kind { font-size: 9.5px; color: var(--ink-3); letter-spacing: 0.5px; }
 .tk-label { font-size: 12.5px; font-weight: 650; color: var(--n-fg, var(--k-fg, var(--ink-1))); }
+
+/* 0920 标题富文本：标题要支持换行（原 nowrap/default 会把 \n 折叠成空格），
+   就地编辑态不显示 outline —— 沿用「节点即输入框」外观零变化的约定。 */
+.tk-label {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  outline: none;
+}
+.sop-node[data-view='talk'] .tk-label { cursor: text; }
+
+/* 选中即浮出的极简工具条（fixed 定位到选区上方） */
+.rich-bar {
+  position: fixed;
+  transform: translate(-50%, -100%) translateY(-8px);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--surface-1, #fff);
+  border: 0.5px solid var(--edge-off, rgba(0, 0, 0, 0.12));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+.rich-btn {
+  min-width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 0.5px solid transparent;
+  background: transparent;
+  color: var(--ink-1, #0f172a);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.rich-btn:hover { background: var(--surface-2, #f1f5f9); }
+.rich-btn.on { background: var(--accent-soft, #dbeafe); color: var(--accent, #2563eb); }
+.rich-swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0.5px solid rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+}
+.rich-swatch.on { box-shadow: 0 0 0 2px var(--surface-1, #fff), 0 0 0 3.5px var(--accent, #2563eb); }
+.rich-sep { width: 1px; height: 14px; background: var(--edge-off, rgba(0, 0, 0, 0.14)); margin: 0 2px; }
 .tk-edit-hint { font-size: 10px; color: var(--accent); letter-spacing: 0.2px; }
 .sop-talk-body { display: flex; flex-direction: column; gap: 6px; }
 .tk-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }

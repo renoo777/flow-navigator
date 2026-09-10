@@ -1,36 +1,40 @@
 /**
- * exportGif.ts — 情景模拟「路线演示动画」导出 GIF（0919 三修：canvas 直绘）
+ * exportGif.ts — 情景演练「当前画面」导出 GIF（0920 v3：不再重放路线）
  *
- * 机制：情景高亮 = computeScenario(nodes, edges, variables, steps) 纯函数输出的
- * activeNodes/activeEdges；steps 是有序决策序列（ScenarioStep[]）。导出 = 按前缀
- * 逐步重放，每段用 reveal(0→1) 缓动插值把新点亮节点/边从 dim 渐入，活跃边画
- * 连续流动虚线（lineDashOffset 逐帧推进）。
+ * v1/v2 的做法是"按 steps 前缀逐段重放"：每步决策画一段 reveal 缓动，把一个节点
+ * 亮起再顺滑到下一个。用户实测反馈：不想看过程演示，就想把**此刻画面上的高亮 +
+ * 流动状态**直接导出去（跟变量选了几个无关）。
  *
- * 与 v1/v2 的本质区别：不再用 html-to-image 克隆整个视口 DOM（单帧 ~200ms 的
- * 常数项瓶颈），而是「一次性」读出几何后逐帧在离屏 canvas 重画（单帧 ~2ms），
- * 因此能上 20fps + 真·逐帧插值流动，苹果滑块式连贯。
+ * v3 语义：
+ *   · 入参 = 画布当前的高亮集合（activeNodes / activeEdges），由 App 从当前
+ *     scenario（或编辑态下的全量节点）直接传入，不做任何 steps 推导、不改动画布；
+ *   · 输出 = 一段**首尾无缝的循环动图**：高亮保持当前状态不动，只有活跃边上的
+ *     虚线在持续流动 —— 就是你在情景演练里看到的那个流动感；
+ *   · 无缝的关键：一个循环内 dash 总位移必须是整数个周期（DASH_CYCLE），
+ *     否则每圈复位时虚线会跳一下。
+ *
+ * 绘制层沿用 0919 的 canvas 直绘（gifRender.ts）：一次性读几何 → 逐帧离屏重画，
+ * 单帧 ~2ms，绕开 html-to-image 的 ~200ms/帧 DOM 克隆瓶颈。
  *
  * 编码：gifenc（扁平矢量图友好），逐帧 getImageData → quantize(256) → writeFrame。
  * 保存：桌面 = save dialog + export_save_bytes；纯 Web = a.download。
  */
-import type { ReactFlowInstance, Edge } from '@xyflow/react';
+import type { ReactFlowInstance } from '@xyflow/react';
 import type { SopFlowNode } from '@flow/canvas';
-import { computeScenario, type FlowNode, type FlowEdge, type FlowVariable } from '@flow/core';
-import type { ScenarioStep } from '@flow/core';
 import { isDesktop } from './vault';
-import { readGeometry, drawFrame, type FrameState } from './gifRender';
+import { readGeometry, drawFrame, DASH_CYCLE, type FrameState } from './gifRender';
 
 export interface ExportGifOptions {
   rf: ReactFlowInstance<SopFlowNode>;
-  /** 截图容器：.react-flow__viewport（仅用于 readGeometry 取边 path；不再逐帧克隆） */
-  viewportEl: HTMLElement;
   docName: string;
-  /** 要重放的有序决策序列（当前情景的 store.steps 快照） */
-  steps: ScenarioStep[];
-  /** 核心图（react-flow 数据），computeScenario 只用 id/source/target，内部转 flow-core 类型 */
-  nodes: FlowNode[];
-  edges: Edge[];
-  variables: FlowVariable[];
+  /** 当前画布上高亮的节点（情景演练 = scenario.activeNodes；编辑态 = 全部节点） */
+  activeNodes: Set<string>;
+  /** 当前画布上高亮的连线（同上） */
+  activeEdges: Set<string>;
+  /** 整条路线已确定（末态）：整体辉光增强 */
+  routeDone?: boolean;
+  /** 全图视角（路线外节点也保持常亮） */
+  focusAll?: boolean;
   /** 帧进度回调（导出期间 UI 提示） */
   onProgress?: (done: number, total: number, msg: string) => void;
   backgroundColor?: string;
@@ -41,18 +45,13 @@ const OUT_W = 820;
 const OUT_H = 615;
 /** 内容边距 */
 const MARGIN = 28;
-/** 首帧定格（观众先看到起点全貌） */
-const HEAD_MS = 420;
-/** 每段帧数（reveal 0→1 的插值采样数） */
-const FRAMES_PER_SEG = 10;
-/** GIF 播放帧 delay（50ms ≈ 20fps；浏览器对 <100ms 普遍按实际播放，比 v2 的 10fps 丝滑一倍） */
+/** 循环帧数与帧间隔：48 帧 × 50ms = 2.4s 一轮（20fps，浏览器普遍按实际播放） */
+const LOOP_FRAMES = 48;
 const PLAY_MS = 50;
-/** 段末定格（亮起后停留，看清再走） */
-const STABLE_MS = 320;
-/** 流动虚线每帧推进量（流程坐标系 px；逐帧递增制造「沿线流动」连续动效） */
-const DASH_STEP = 5;
-/** 总帧硬上限 */
-const MAX_FRAMES = 220;
+/** 一轮里虚线走几个周期（3 个 × 16px = 48px，除以 48 帧 → 每帧 1px，约 20px/s，
+ *  与画布上 CSS dash-flow 的 ~17.8px/s 观感一致） */
+const DASH_CYCLES = 3;
+const DASH_STEP = (DASH_CYCLES * DASH_CYCLE) / LOOP_FRAMES;
 
 interface GifEncoderLike {
   writeFrame: (index: Uint8Array, w: number, h: number, opts?: object) => void;
@@ -64,29 +63,17 @@ export async function exportFlowGif(opts: ExportGifOptions): Promise<void> {
   const {
     rf,
     docName,
-    steps,
-    nodes,
-    edges,
-    variables,
+    activeNodes,
+    activeEdges,
+    routeDone = false,
+    focusAll = false,
     onProgress,
     backgroundColor = '#ffffff',
   } = opts;
-  const N = steps.length;
-  if (N === 0) throw new Error('先走一条路线（逐个给变量取值，或点「一键示例路线」），再导出 GIF');
 
-  /* 一次性几何（节点矩形 + 边 path d + 标签坐标 + 主题色）；命中集合由 computeScenario
-   * 按前缀独立算，不改动实时画布，导出期间无闪烁 */
+  /* 一次性几何（节点矩形 + 边 path d + 标签坐标 + 主题色） */
   const geo = readGeometry(rf);
-
-  /* 每个前缀 k 的命中集合（k=0..N）。
-   * react-flow 的 Edge.type 是可选（string | undefined），flow-core 的 FlowEdge.type 必填；
-   * computeScenario 不消费 type，故内部安全强转（字段 id/source/target 完全对齐）。 */
-  const coreEdges = edges as unknown as FlowEdge[];
-  const sets: { nodes: Set<string>; edges: Set<string> }[] = [];
-  for (let k = 0; k <= N; k++) {
-    const r = computeScenario(nodes, coreEdges, variables, steps.slice(0, k));
-    sets.push({ nodes: r.activeNodes, edges: r.activeEdges });
-  }
+  if (!geo.nodes.length) throw new Error('画布是空的，先画点东西再导出 GIF');
 
   const { GIFEncoder, quantize, applyPalette } = await import('gifenc');
 
@@ -109,26 +96,19 @@ export async function exportFlowGif(opts: ExportGifOptions): Promise<void> {
   const frames: { index: Uint8Array; palette: number[][] }[] = [];
   const delays: number[] = [];
 
-  const paintSet = (
-    cur: { nodes: Set<string>; edges: Set<string> },
-    prev: { nodes: Set<string>; edges: Set<string> },
-    reveal: number,
-    routeDone: boolean,
-    dashPhase: number,
-  ): void => {
-    paint({
-      activeNodes: cur.nodes,
-      activeEdges: cur.edges,
-      prevNodes: prev.nodes,
-      prevEdges: prev.edges,
-      reveal,
+  /* 当前状态：prev 集合与 active 相同 → reveal 视为已完成（alpha/辉光直接满值），
+   * 因此画面上是"已经亮着"的稳态，只有 dashPhase 在推进。 */
+  const paintAt = (dashPhase: number) => {
+    const state: FrameState = {
+      activeNodes,
+      activeEdges,
+      prevNodes: activeNodes,
+      prevEdges: activeEdges,
+      reveal: 1,
       dashPhase,
       routeDone,
-      focusAll: false,
-    });
-  };
-
-  const paint = (state: FrameState) => {
+      focusAll,
+    };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, OUT_W, OUT_H);
@@ -140,38 +120,19 @@ export async function exportFlowGif(opts: ExportGifOptions): Promise<void> {
   };
 
   /* 让出主线程：逐帧绘制是同步 CPU 工作，若不让出 React 永远没机会渲染
-   * 「导出中 n/total…」中间态（大图导出时用户也看不到进度）。每次 onProgress
-   * 后让一个宏任务，React 即可 flush 并重绘按钮。 */
+   * 「导出中 n/total…」中间态（大图导出时用户也看不到进度）。 */
   const yieldToPaint = () => new Promise<void>((r) => setTimeout(r, 0));
 
+  const total = LOOP_FRAMES;
   let done = 0;
-  let dashPhase = 0;
-  let total = 1 + N * FRAMES_PER_SEG;
-  if (total > MAX_FRAMES) {
-    throw new Error(`这条路线有 ${N} 步决策，GIF 帧数会超上限（${total} > ${MAX_FRAMES}）；先少走几步再导出`);
-  }
   onProgress?.(0, total, '绘制');
   await yieldToPaint();
 
-  /* 首帧：起点全貌（reveal=1，dash 起始） */
-  paintSet(sets[0], sets[0], 1, false, dashPhase);
-  delays.push(HEAD_MS);
-  onProgress?.(++done, total, '起点');
-  await yieldToPaint();
-
-  for (let k = 1; k <= N; k++) {
-    const prev = sets[k - 1];
-    const active = sets[k];
-    const routeDone = k === N;
-    for (let i = 0; i < FRAMES_PER_SEG; i++) {
-      const reveal = (i + 1) / FRAMES_PER_SEG;
-      dashPhase += DASH_STEP;
-      paintSet(active, prev, reveal, routeDone, dashPhase);
-      const last = i === FRAMES_PER_SEG - 1;
-      delays.push(last ? STABLE_MS : PLAY_MS);
-      onProgress?.(++done, total, `第 ${k} 段`);
-      await yieldToPaint();
-    }
+  for (let i = 0; i < LOOP_FRAMES; i++) {
+    paintAt(i * DASH_STEP);
+    delays.push(PLAY_MS);
+    onProgress?.(++done, total, '绘制');
+    await yieldToPaint();
   }
 
   onProgress?.(done, total, '编码 GIF');
@@ -193,7 +154,7 @@ async function saveGif(blob: Blob, docName: string): Promise<void> {
     const { save } = await import('@tauri-apps/plugin-dialog');
     const { invoke } = await import('@tauri-apps/api/core');
     const p = await save({
-      defaultPath: `${safeName}-情景演示.gif`,
+      defaultPath: `${safeName}-情景流动.gif`,
       filters: [{ name: 'GIF 动图', extensions: ['gif'] }],
     });
     if (!p) return; /* 用户取消：静默返回 */
@@ -203,7 +164,7 @@ async function saveGif(blob: Blob, docName: string): Promise<void> {
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.download = `${safeName}-情景演示.gif`;
+  a.download = `${safeName}-情景流动.gif`;
   a.href = url;
   document.body.appendChild(a);
   a.click();

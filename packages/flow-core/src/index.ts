@@ -11,3 +11,4 @@ export * from './anchor';
 export * from './edgeRoute';
 export * from './nodeSize';
 export * from './overlap';
+export * from './richText';

@@ -213,7 +213,7 @@ function TalkRow({
             return (
               <input
                 key={who}
-                className="te-rename"
+                className="te-rename nodrag nopan"
                 defaultValue={name}
                 autoFocus
                 maxLength={8}
@@ -257,7 +257,7 @@ function TalkRow({
 
       <textarea
         ref={taRef}
-        className="te-input"
+        className="te-input nodrag nopan"
         value={line.text}
         placeholder="说话内容…"
         onChange={(e) => onText(e.target.value)}

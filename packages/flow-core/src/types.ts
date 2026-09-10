@@ -23,6 +23,14 @@ export const TALK_W_MIN = 240;
 export const TALK_W_MAX = 620;
 export const TALK_W_DEFAULT = 340;
 
+/** 0920 富文本片段：一段连续文字 + 它的样式 */
+export interface RichSegment {
+  text: string;
+  bold?: boolean;
+  /** #rrggbb；缺省 / 清除 = 继承主题前景色 */
+  color?: string;
+}
+
 /** 画布节点数据（自定义节点 sop 的 data 载荷） */
 export interface SopData {
   label: string;
@@ -39,6 +47,10 @@ export interface SopData {
   size?: { w: number; h: number };
   /** 点1 自定义换行：每行 N 个字自动断行（缺省 = 不启用；手动 \n 始终生效） */
   wrapCols?: number;
+  /** 0920 标题富文本片段（可选）。
+   *  label 始终是唯一数据真相——搜索 / 尺寸估算 / 飞书往返 / 复制粘贴 / 导出都读 label；
+   *  本字段只有渲染层消费，缺省（或无字面长度差异）即按纯文本渲染，旧数据零迁移。 */
+  labelSegments?: RichSegment[];
 }
 
 /** 画布节点（与 React Flow Node 解耦，纯数据） */

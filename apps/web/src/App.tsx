@@ -483,38 +483,34 @@ function EditorScreen() {
     }
   }, [rf, docName]);
 
-  /** 0919 · 情景演示动画导出 GIF：canvas 直绘（绕开 DOM 克隆）。
-   *  按 steps 前缀用 computeScenario 独立算命中集合，逐帧在离屏 canvas 重画 +
-   *  reveal 缓动 + 流动虚线，不改动实时画布（导出期间无闪烁）。 */
+  /** 0920 · 情景演练「当前画面」导出 GIF：canvas 直绘（绕开 DOM 克隆）。
+   *  不再按 steps 逐段重放——直接把此刻画布上的高亮集合（scenario.activeNodes/activeEdges）
+   *  交给渲染层，输出一段首尾无缝的循环动图（高亮保持现状，只有活跃边的虚线在流动）。
+   *  全程不读/不改 store.steps，导出期间画布零闪烁。 */
   const [gifExport, setGifExport] = useState<{ done: number; total: number } | null>(null);
   const handleExportGif = useCallback(async () => {
-    const s = useAppStore.getState();
-    if (!s.steps.length) {
-      window.alert('先走一条路线（逐个给变量取值，或点「一键示例路线」），再导出 GIF');
-      return;
-    }
-    const el = document.querySelector('.canvas-wrap .react-flow__viewport') as HTMLElement | null;
-    if (!el) return;
-    const snapshot = [...s.steps];
     setGifExport({ done: 0, total: 0 });
     try {
+      /* 情景态 = 当前 scenario 的命中集合；编辑态（无 scenario）= 全部节点/边按常态亮着 */
+      const activeNodes =
+        scenario?.activeNodes ?? new Set(nodes.filter((n) => !isExprNode(n)).map((n) => n.id));
+      const activeEdges = scenario?.activeEdges ?? new Set(edges.map((e) => e.id));
+      const routeDone = !!scenario && scenario.pendingVars.size === 0 && activeNodes.size > 0;
       await exportFlowGif({
         rf,
-        viewportEl: el,
         docName,
-        steps: snapshot,
-        nodes,
-        edges,
-        variables,
+        activeNodes,
+        activeEdges,
+        routeDone,
+        focusAll,
         onProgress: (done, total) => setGifExport({ done, total }),
       });
     } catch (e) {
       window.alert(`GIF 导出失败：${(e as Error)?.message ?? e}`);
     } finally {
-      useAppStore.setState({ steps: snapshot });
       setGifExport(null);
     }
-  }, [rf, docName, nodes, edges, variables]);
+  }, [rf, docName, scenario, nodes, edges, focusAll]);
 
   /** Build K-③ · 1200×630 社交分享卡：纯 Canvas 重绘（非截图），零依赖。
    *  位置用 dagre 现算一份布局——用户可能从没整理过画布（节点全在 0,0），

@@ -508,13 +508,9 @@ export function VariableDock({
           <button
             className="ghost"
             onClick={onExportGif}
-            disabled={gifBusy || !stepsCount}
+            disabled={gifBusy}
             data-testid="export-gif-btn"
-            title={
-              !stepsCount
-                ? '先走一条路线（变量取值或一键示例路线），把过程演示出来再导出'
-                : '把刚才的路线演示导出为 GIF 动图（直线/曲线/肘线各自保留，可直接发微信/PPT）'
-            }
+            title="把画布此刻的高亮 + 流动状态导出为 GIF 动图（无缝循环，直线/曲线/肘线各自保留，可直接发微信/PPT）"
           >
             {gifBusy ? `导出中 ${gifProgress ?? ''}…` : '导出 GIF'}
           </button>
@@ -527,7 +523,7 @@ export function VariableDock({
         <button className="ghost" onClick={onExport} title="导出当前流程图为 JSON 备份">
           导出 JSON
         </button>
-        <button className="ghost" onClick={onExportPng} disabled={nodesCount === 0} title="导出当前流程图为 PNG 图片（含变量名，可直接喂公众号）">
+        <button className="ghost" onClick={onExportPng} disabled={nodesCount === 0} data-testid="export-png-btn" title="导出当前流程图为 PNG 图片（含变量名，可直接喂公众号）">
           导出 PNG
         </button>
         <button
