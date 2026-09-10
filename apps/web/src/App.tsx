@@ -483,8 +483,9 @@ function EditorScreen() {
     }
   }, [rf, docName]);
 
-  /** 0918 · 情景演示动画导出 GIF：按 steps 前缀重放高亮链路，逐帧截屏编码。
-   *  导出期间把画布状态临时回退到各前缀（高亮随之前缀亮起），结束后恢复完整路线。 */
+  /** 0919 · 情景演示动画导出 GIF：canvas 直绘（绕开 DOM 克隆）。
+   *  按 steps 前缀用 computeScenario 独立算命中集合，逐帧在离屏 canvas 重画 +
+   *  reveal 缓动 + 流动虚线，不改动实时画布（导出期间无闪烁）。 */
   const [gifExport, setGifExport] = useState<{ done: number; total: number } | null>(null);
   const handleExportGif = useCallback(async () => {
     const s = useAppStore.getState();
@@ -502,7 +503,9 @@ function EditorScreen() {
         viewportEl: el,
         docName,
         steps: snapshot,
-        advance: (k) => useAppStore.setState({ steps: snapshot.slice(0, k) }),
+        nodes,
+        edges,
+        variables,
         onProgress: (done, total) => setGifExport({ done, total }),
       });
     } catch (e) {
@@ -511,7 +514,7 @@ function EditorScreen() {
       useAppStore.setState({ steps: snapshot });
       setGifExport(null);
     }
-  }, [rf, docName]);
+  }, [rf, docName, nodes, edges, variables]);
 
   /** Build K-③ · 1200×630 社交分享卡：纯 Canvas 重绘（非截图），零依赖。
    *  位置用 dagre 现算一份布局——用户可能从没整理过画布（节点全在 0,0），
