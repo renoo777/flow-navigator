@@ -172,16 +172,52 @@ export function computeScenario(
   const pendingVisits: Record<string, number> = {};
   const seenVisits = new Set<string>();
   const stack = [...starters];
-  /* Bug1 根因修复：非决策节点的重复展开语义按「图里有没有变量」分流 ——
-   * ① 无变量图（或全部停用）：展开结果与首次完全相同，回路重复展开只会
-   *    烧光步数预算 → 遍历提前终止，实测 28 节点板只剩 7 节点活跃、
-   *    出现「边已记亮、箭头指向的节点没亮」。改为每节点至多展开一次。
-   * ② 有变量图：保留重复展开 —— 「打回后重走」必须重新经过非决策节点，
-   *    才能第二次到达回路上的决策点取新决策（engine.test 回路用例）。
-   *    终止由决策序列有限保证，预算仅兜底。 */
-  const hasVars = Object.keys(varByNode).length > 0;
-  /* 步数预算：有变量图上回路非决策节点重复经过（打回后重走），允许重复展开；
-     终止靠 ①变量节点的决策序列有限（用完即 pending）②预算兜底。 */
+  /* 遍历终止性（两处独立保证，缺一不可）：
+   * ① 变量节点：每次经过消耗决策序列里的一条决策，序列有限 → 用完即 pending 停住。
+   * ② 非决策节点：**只有「落在含决策点的回路上的节点」才允许重复展开**（`reExpandable`），
+   *    其余节点每节点至多展开一次。
+   *
+   *    ——历史 bug（Bug2 · 链路高亮不全）：这里曾经按「图里有没有变量」分流，有变量时
+   *    保留**所有**非决策节点的重复展开，理由是「打回后重走必须重新经过非决策节点」。
+   *    但那个理由只对**回路上的节点**成立：控制流要第二次抵达回路上的决策点，必须重新
+   *    经过回边起点的前驱链。环外节点（尤其多条分支的公共后继，如「订单完结」有 4 条
+   *    入边）重复展开不会带来任何新信息，却让 visitCounts 指数级膨胀 —— 实测 51 节点图
+   *    上「订单完结」被展开 43474 次、「退款处理/资金原路返回」各 17389 次；步数预算
+   *    budget = 51*4 + 2*4 + 128 = 340 在第 340 步就被烧光 → 遍历硬截断，只覆盖
+   *    42/51 节点、45/62 边，用户观感即「选了这条链路，但链路中后段一批节点没亮」。
+   *
+   *    判定方式（纯拓扑，与取值无关）：非决策节点 n 会被重复展开 ⇔ n 能到达某个
+   *    **决策节点**，且该决策节点能回到 n（即二者同属一个「含决策点的回路」）。
+   *    用可到达性（`canReach`）表达，天然含跨分量的情形。
+   *    本例：B 能到达决策点 C，且 C 能回到 B → B 可重复展开（保住 M3 两次决策语义）；
+   *    而「订单完结」不落在任何含决策点的回路上 → 只展开一次（截断消失）。 */
+  const decisionIds = new Set(Object.keys(varByNode));
+  const canReach = (from: string, to: string): boolean => {
+    const seen = new Set<string>();
+    const q = [from];
+    while (q.length) {
+      const cur = q.pop()!;
+      if (cur === to) return true;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      (out[cur] ?? []).forEach((e) => {
+        if (!seen.has(e.target)) q.push(e.target);
+      });
+    }
+    return false;
+  };
+  /** 非决策节点 n 是否允许重复展开：n 能到达某决策点 d，且 d 能回到 n */
+  const reExpandable = new Set<string>();
+  nodes.forEach((nd) => {
+    if (varByNode[nd.id]) return;
+    for (const d of decisionIds) {
+      if (canReach(nd.id, d) && canReach(d, nd.id)) {
+        reExpandable.add(nd.id);
+        return;
+      }
+    }
+  });
+  /* 步数预算：纯兜底防御。终止主要靠 ① + ②（决策序列有限 + 环外节点不重复展开）。 */
   const budget = nodes.length * 4 + stack.length * 4 + 128;
   let walked = 0;
   while (stack.length && walked < budget) {
@@ -209,7 +245,9 @@ export function computeScenario(
         }
       });
     } else {
-      if (k > 0 && !hasVars) continue; /* 无变量：重复展开无新信息，纯环必须靠它终止 */
+      /* 环外节点：重复展开无新信息，只会烧预算 → 至多展开一次。
+         含决策点的回路上的节点：允许重复展开，把控制流送回决策点取新决策。 */
+      if (k > 0 && !reExpandable.has(id)) continue;
       outs.forEach((e) => {
         activeEdges.add(e.id);
         stack.push(e.target);
@@ -243,8 +281,20 @@ export function computeScenario(
  * 规则：从入口节点出发 DFS；遇到**启用中的变量**节点时，取「下游最深」的那条出口
  *       （能往后带出最多节点，演示价值最大，等价于示例模板里那条深路径）；
  *       非变量节点照常全展开。遇到终点或步数预算即停。
- * 回路：同一判断点最多决策 MAX_ROUNDS 轮（演示一圈返工即可），之后停住交给用户手选，
- *       因此不会绕成死循环。
+ * 回路：**每条回路最多只走一圈**，绝不会绕成无限循环（见下）。
+ *
+ * 「只循环一次」的实现：
+ *  ① 每个决策节点最多代选 1 轮 —— 决策序列里同一 nodeId 只出现一次。运行时该判断点
+ *     第二次被经过时没有第 2 条决策 → 自然停住交给用户手选。旧实现是 MAX_ROUNDS=2
+ *     （同一判断点连代选两轮「打回」），结果路线绕两圈还到不了终点 —— 就是用户看到
+ *     「示例路线在无限循环」的表现。
+ *  ② 选路优先级用「离终点的距离」，而不是「下游深度」。「下游深度」在含环的图上会被
+ *     环撑大（打回分支因为能绕回来，depth 反而比直达分支大），导致示例路线总是倾向
+ *     选回退边。改用 `distToEnd`（到最近终点的最短步数，环内记 ∞）后，**推进型出口
+ *     天然排在前**：如「检查通过？→打回/通过」，示例选「通过」直达终点；「打回」这条
+ *     回退路留给用户手点。等价于「示例路线绕开回路、一圈即止」。
+ *     若某判断点所有出口都在环里（纯死循环、无推进出路），则退回原「下游最深」策略，
+ *     由保证 ① 负责终止。
  *
  * 与 computeScenario 的契约：本函数完全复刻 computeScenario 的遍历顺序
  * （同起点、同 DFS 出栈序），产出的 steps 顺序 == 运行时消费顺序。
@@ -280,10 +330,30 @@ export function suggestScenarioSteps(
   };
   nodes.forEach((n) => depthOf(n.id));
 
+  /** 回退型出口的判定：目标节点落在**真回路（非平凡强连通分量）**上 ⇒ 选它就会绕圈。
+   *  用 Tarjan 缩点：目标节点所在分量大小 > 1，或存在自环 → 是回退型。
+   *  「先能走到终点」不够用 —— 环内节点同样能走出去（fix→d1→e），必须用 SCC 才认得出环。
+   *  含自环的节点（a→a）也算，由 compOf 大小 1 + 自环检测覆盖。 */
+  const adjList: Record<string, string[]> = {};
+  nodes.forEach((n) => (adjList[n.id] = []));
+  edges.forEach((e) => {
+    if (adjList[e.source] && adjList[e.target] !== undefined) adjList[e.source].push(e.target);
+  });
+  const comps = stronglyConnectedComponents(
+    nodes.map((n) => n.id),
+    adjList
+  );
+  const compSize: Record<string, number> = {};
+  comps.forEach((c) => c.forEach((id) => (compSize[id] = c.length)));
+  const hasSelfLoop = new Set<string>();
+  edges.forEach((e) => {
+    if (e.source === e.target) hasSelfLoop.add(e.source);
+  });
+  const inCycle = (id: string): boolean => compSize[id] > 1 || hasSelfLoop.has(id);
+
   const steps: ScenarioStep[] = [];
   const visits: Record<string, number> = {};
   const stack: string[] = [...findEntryNodes(nodes, edges)];
-  const MAX_ROUNDS = 2; // 同一判断点最多决策 2 轮（够演示「打回 → 重做」一圈）
   const budget = nodes.length * 4 + variables.length * 4 + 128;
   let walked = 0;
 
@@ -299,11 +369,22 @@ export function suggestScenarioSteps(
       outs.forEach((e) => stack.push(e.target));
       continue;
     }
-    if (k >= MAX_ROUNDS) continue; // 第 3 次到达：不再代选，留给用户手动决策
+    /* 保证 ①：每个决策节点最多代选 1 轮，示范「路过一次」即可 */
+    if (k >= 1) continue;
     const opts = v.options.filter((o) => targetOf.has(o.edgeId));
     if (!opts.length) continue;
+    /* 保证 ②：**排除回退型出口**（目标在回路上 ⇒ 走它就要绕圈），只在「往前走」的
+       出口里选。这样示例路线天然绕开回路、一圈即止：
+       「检查通过？→打回(fix 在环上，跳过) / 通过(→e，选它)」→ 直达终点；
+       「打回」这条回退路留给用户在导航里自己点。
+       选路仍用「下游更深者优先」，保留原有「演示价值最大」的取舍（如 d1 有报价
+       =3 层 vs 无报价=1 层 → 选有报价，才能串起 d2/d3 两个后续判断点）。
+       若某判断点**所有**出口都是回退型（纯死循环、无推进出路），退回原策略，
+       由保证 ① 负责终止。 */
+    const advancing = opts.filter((o) => !inCycle(targetOf.get(o.edgeId)!));
+    const pool = advancing.length ? advancing : opts;
     /* 取下游最深的分支；同深度取声明序第一条（稳定可复现） */
-    const best = opts.reduce((a, b) =>
+    const best = pool.reduce((a, b) =>
       (depth[targetOf.get(b.edgeId)!] ?? 0) > (depth[targetOf.get(a.edgeId)!] ?? 0) ? b : a
     );
     steps.push({ nodeId: id, edgeId: best.edgeId });

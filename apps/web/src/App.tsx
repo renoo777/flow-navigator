@@ -235,12 +235,37 @@ function EditorScreen() {
     if (enabledVarNodeIds !== null) guideLock.current = false;
   }, [docId, readonly, candidates, enabledVarNodeIds]);
 
-  /* —— 测试钩子：探针需要编程式控制视口（选中边后拖端点等真机断言）。
-        只读暴露 RF 实例，不触碰业务状态。 */
+  /* —— 测试/演示钩子：探针需要编程式控制视口（选中边后拖端点等真机断言）。
+        只读暴露 RF 实例，不触碰业务状态。
+
+        另外暴露 __flowSetDoc：切换「当前文档」需要一个 docId 参数，而 openDoc
+        目前在 useAppStore 里没被解构出来。与其为了截图去改业务签名，不如在
+        这里透出一个 hook 型的 setter（值来自 store，仍然只走正规 store action）。 */
   useEffect(() => {
-    (window as unknown as Record<string, unknown>).__flowRF = rf;
+    const w = window as unknown as Record<string, unknown>;
+    w.__flowRF = rf;
+    w.__flowSetDoc = (id: string) => {
+      const store = (
+        window as unknown as {
+          __flowStore?: { getState: () => { openDoc?: (docId: string) => void } };
+        }
+      ).__flowStore;
+      store?.getState().openDoc?.(id);
+    };
+    /* 演示/出图用的「纯净画布」开关：把左侧 Dock 的**布局让位**整块去掉。
+       只写 CSS `display:none` 不行 —— 主区是 flex 让位的，Dock 消失后
+       主区不会自动长回来，画布反而更窄。这里落一个根属性，样式表里
+       针对它把整行改成单列，再把画布通知 RF 重算。 */
+    w.__demoMode = (on: boolean) => {
+      const r = document.documentElement;
+      if (on) r.setAttribute('data-demo-clean', '');
+      else r.removeAttribute('data-demo-clean');
+    };
     return () => {
-      delete (window as unknown as Record<string, unknown>).__flowRF;
+      delete w.__flowRF;
+      delete w.__flowSetDoc;
+      delete w.__demoMode;
+      document.documentElement.removeAttribute('data-demo-clean');
     };
   }, [rf]);
 

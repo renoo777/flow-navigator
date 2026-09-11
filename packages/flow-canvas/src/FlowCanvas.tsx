@@ -238,6 +238,38 @@ function SelectionBar({
   const [scope, setScope] = useState<keyof NodePaint>('bg');
   const [colorOpen, setColorOpen] = useState(false);
   const sel = useMemo(() => nodes.filter((n) => n.selected), [nodes]);
+  /* 选择集的「身份」：只随选中的节点集合变化，配色/位置变更不影响它 */
+  const selKey = useMemo(() => sel.map((n) => n.id).sort().join('|'), [sel]);
+
+  /* 配色浮层的关闭语义（两条独立路径，缺一不可）：
+   * ① 选择集变化（含清空）→ 收起。
+   *    必须显式做：本组件**始终挂载**，「没有选中」只是走到下面 `return null`
+   *    —— React 会保留实例与 state，`colorOpen` 依旧是 true。于是点空白取消选择
+   *    只是让浮层「不渲染」，开关还开着；再选中/拖动节点时它立刻「诈尸」弹出来
+   *    盖住节点（用户报的 bug：点空白消失 → 拖节点又弹回来 → 点「颜色」才真收起）。
+   * ② 点击浮层外部 / Esc → 收起（与右键菜单 .ctx-menu、类型选择器 TypePicker 同款
+   *    交互，三处浮层行为统一）。 */
+  useEffect(() => {
+    setColorOpen(false);
+  }, [selKey]);
+  useEffect(() => {
+    if (!colorOpen) return;
+    const onDown = (e: globalThis.MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      /* 浮层与「颜色」按钮同属 .selbar，点它们不算「外部」 */
+      if (t && typeof t.closest === 'function' && t.closest('.selbar')) return;
+      setColorOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setColorOpen(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [colorOpen]);
 
   if (!editable || sel.length === 0) return null;
 

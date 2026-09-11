@@ -24,9 +24,9 @@ const MIRROR = (u: string) => `https://gh-proxy.com/${u}`;
 export async function appVersion(): Promise<string> {
   if (cachedVersion) return cachedVersion;
   try {
-    cachedVersion = isTauriEnv ? await getVersion() : '0.1.9';
+    cachedVersion = isTauriEnv ? await getVersion() : '0.1.10';
   } catch {
-    cachedVersion = '0.1.9';
+    cachedVersion = '0.1.10';
   }
   return cachedVersion;
 }

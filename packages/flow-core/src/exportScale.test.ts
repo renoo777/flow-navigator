@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planExportSize, PNG_PRESET, GIF_PRESET } from './exportScale';
+import { planExportSize, GIF_PRESET } from './exportScale';
 
 describe('planExportSize — 导出分辨率规划', () => {
   it('小图：1:1 布局 + 2 倍超采样，字号翻倍', () => {

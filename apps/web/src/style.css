@@ -144,6 +144,13 @@ button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 .app { display: flex; height: 100%; background: var(--bg-app); }
 
+/* 演示出图：纯净画布。由 window.__demoMode(true) 落根属性触发。
+   注意必须从**布局层**去掉 Dock 的让位（不是 display:none 了事），
+   否则主区宽度不会补回来，画布反而变窄。 */
+html[data-demo-clean] .app { display: block; }
+html[data-demo-clean] .dock { display: none !important; }
+html[data-demo-clean] .canvas { width: 100vw; height: 100vh; }
+
 @media (prefers-reduced-motion: reduce) {
   /* Stripe 式降级（而非一刀切禁用）：运动全部取消，只留 120ms 线性淡入淡出。
      状态变化依然看得见，但不会 «动»—— 前庭失调用户安全，信息不丢失。 */
