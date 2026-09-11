@@ -133,10 +133,11 @@ npm run tauri:build  # 桌面端打包（产物在 src-tauri/target/release/bund
 ## 发布流程（维护者）
 
 ```bash
-# 1. 版本号已一致（package.json / src-tauri/tauri.conf.json）
+# 1. 版本号已一致（package.json / package-lock.json / src-tauri/tauri.conf.json
+#    / apps/web/src/useUpdater.ts —— 四处共 6 个点，别漏 useUpdater 的兜底常量）
 # 2. 打 tag 即触发桌面端三平台构建（GitHub Actions），产物以 Draft Release 挂出
-git tag v0.1.9
-git push origin v0.1.9
+V=v0.1.10                       # ← 换成本次版本号
+git tag "$V" && git push origin "$V"
 # 3. 到 Releases 页确认后点 Publish 对外发布（**草稿态不计入 latest，自动更新不会生效**）
 #    —— 发布后已装用户的桌面版下次启动即自动收到更新（v0.1.4+ 支持）
 #    仓库：https://github.com/renoo777/flow-navigator ｜ Web 版：https://renoo777.github.io/flow-navigator/
