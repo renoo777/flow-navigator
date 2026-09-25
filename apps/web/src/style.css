@@ -574,7 +574,10 @@ html[data-demo-clean] .canvas { width: 100vw; height: 100vh; }
   max-width: none;
   min-width: 0; /* 覆盖全局 148px 下限：飞书窄卡(92~138)按原宽渲染 */
   box-sizing: border-box;
-  overflow: hidden;
+  /* 0924 修：原为 overflow:hidden，会把定位在卡片外侧(-5px)的四向连接点整块裁掉
+     → 飞书导入的卡片既拉不出新线、也不能作为连线落点（「改不动连线」根因#1）。
+     裁切下沉到 .sop-flow（见下一条），节点自身必须 visible 才能让连接点可见可点。 */
+  overflow: visible;
 }
 .sop-node.keep-shape .rail,
 .sop-node.keep-shape .sop-sub { display: none; }
@@ -587,6 +590,8 @@ html[data-demo-clean] .canvas { width: 100vw; height: 100vh; }
      （2026-09-09 真板复现：200px 卡的 sop-flow 只有 72px，标签左偏 64px）。 */
   width: 100%;
   height: 100%;
+  /* 承接原 .keep-shape 的 overflow:hidden：只裁文本内容，不裁节点外侧的连接点 */
+  overflow: hidden;
   padding: 4px 10px;
   box-sizing: border-box;
   display: flex;

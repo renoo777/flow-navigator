@@ -1388,6 +1388,24 @@ export function FlowCanvas({
         },
         /* 加宽命中带：2px 的线不该只有 2px 的可抓范围（RF 会从 edge 上读这个字段） */
         interactionWidth: 26,
+        /**
+         * 0924 修（「改不动连线」根因#2）：端点重连热区只在「已选中」的这条边上渲染。
+         *
+         * 病灶：edgesReconnectable 全局开启 → 密集图（飞书导入 13 边）里同时渲染 26 个
+         * .react-flow__edgeupdater（每个 reconnectRadius=22 的圆），热区互相重叠；而且
+         * RF 的边是「后画的压住先画的」（每条边一个 <svg>，非选中边 z-index 全为 0），
+         * 于是拖 A 的端点常常命中 B 的热区 → onReconnect 上报了另一条边（串边），
+         * 用户看到的现象就是「这条线的连接关系根本没变」。
+         *
+         * 解法：显式 reconnectable —— 只有选中的边才渲染 2 个热区（26 → 2，重叠归零）；
+         * 配合下面 <ReactFlow> 的 elevateEdgesOnSelect（选中边 z-index +1000 置顶），
+         * 保证它的热区不会再被别的边的 26px interactionWidth 命中带盖住。
+         * 交互代价 = 「先点线选中，再拖端点」，与 Lucidchart / Figma 同款心智。
+         * 注意：必须显式给布尔值。RF 的判定是
+         *   edge.reconnectable || (edgesReconnectable && typeof edge.reconnectable === 'undefined')
+         * 传 false 时 typeof 不是 'undefined'，会正确收敛成「不可重连」。
+         */
+        reconnectable: !!e.selected,
         /* 圆角半径 5→10：默认 5px 在短线上几乎看不见（用户反馈"没感知到变化"），
            加大后斜向连线的拐弯一眼可辨。smoothstep 专用，bezier/straight 忽略。 */
         pathOptions: { borderRadius: 10 },
@@ -1630,6 +1648,13 @@ export function FlowCanvas({
           .join(' ')}
         nodes={displayedNodes}
         edges={displayedEdges}
+        /* 0924 修（根因#2 的另一半）：把「选中的边」整条置顶。
+           RF 默认 false（组件 prop 默认值会覆盖 store 里的 true），于是边按数组顺序绘制、
+           后画的压住先画的 —— 密集图里选中边的端点热区会被别的边的 interactionWidth
+           命中带盖住，拖不动。开启后 RF 给选中边的 <svg> 包一层 z-index +1000
+           （getElevatedEdgeZIndex，EdgeWrapper 里 style={{zIndex}}，svg 是 absolute 定位，
+           z-index 真实生效），热区就不会再被压住。非选中边 z-index 仍为 0，相对顺序不变。 */
+        elevateEdgesOnSelect
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         /* 四向连线：任意一侧的连接点都能发起/接收连线（React Flow loose 模式） */
