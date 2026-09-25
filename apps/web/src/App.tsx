@@ -169,6 +169,7 @@ function EditorScreen() {
     moveEdgeLabel,
     syncEdgeSides,
     deleteNodes,
+    reverseEdges,
     toggleTheme,
   } = useAppStore();
   const rf = useReactFlow<SopFlowNode, Edge>();
@@ -683,6 +684,25 @@ function EditorScreen() {
     [setEdgeRoute, setMode]
   );
 
+  /* —— 连线右键菜单（P1）—— */
+  const handleReverseEdges = useCallback(
+    (edgeIds: string[]) => {
+      reverseEdges(edgeIds);
+      setMode('edit');
+    },
+    [reverseEdges, setMode]
+  );
+
+  /** 删除连线：复用 onEdgesChange 的 remove 分支（连带清 assignments / steps + 入历史） */
+  const handleDeleteEdges = useCallback(
+    (edgeIds: string[]) => {
+      if (!edgeIds.length) return;
+      onEdgesChange(edgeIds.map((id) => ({ type: 'remove' as const, id })));
+      setMode('edit');
+    },
+    [onEdgesChange, setMode]
+  );
+
   /** Build L · 命令面板：全局动作一键直达（节点跳转项由画布自动生成） */
   const addAtCenter = useCallback(
     (kind: NodeKind) => {
@@ -841,6 +861,8 @@ function EditorScreen() {
           onMoveLabel={handleMoveLabel}
           onSyncEdgeSides={readonly ? undefined : syncEdgeSides}
           onDeleteNode={(id) => deleteNodes([id])}
+          onReverseEdges={handleReverseEdges}
+          onDeleteEdges={handleDeleteEdges}
           onTalkEdit={mark}
           onFocusNode={handleFocusNode}
           commands={dockCommands}

@@ -24,6 +24,7 @@ import {
   SAMPLE_EDGE_DEFS,
   SAMPLE_NODE_DEFS,
   edgeIdOf,
+  isBendRoute,
   TALK_W_MAX,
   TALK_W_MIN,
   type Assignments,
@@ -643,6 +644,8 @@ export interface AppState {
   setEdgeTypes: (edgeIds: string[], t: string) => void;
   /** 端点交还自动（清掉手动钉住的锚点 + 手动折点，整条线交还自动路由） */
   resetEdgeAnchors: (edgeIds: string[]) => void;
+  /** 一键反向（连线右键菜单）：交换起止 + 端口 + 端点锚点，折点镜像到新方向（走向不变） */
+  reverseEdges: (edgeIds: string[]) => void;
   /** WP5b：把本图所有连线一并复位（清空折点 / 端点吸附），一步历史可撤销 */
   resetAllEdgeRoutes: () => void;
   /** WP5 连线编辑：写入折点路由 / 端点锚点 + 把两端钉到当前侧。commit=true 才推历史（每轮拖动只推一次）。 */
@@ -1546,6 +1549,56 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (Object.keys(d).length) next.data = d;
         else delete next.data;
         return next;
+      }),
+    }));
+  },
+
+  /**
+   * 一键反向（draw.io 的 Reverse / Figma 的「反转箭头方向」）。
+   * 只把「谁指向谁」掉个头，**线的走向必须原样不动** —— 所以四份数据都要跟着翻：
+   *   ① source/target 互换；
+   *   ② sourceHandle/targetHandle 互换（端口侧跟着走，否则线会跳到别的边上）；
+   *   ③ data.sourceAnchor/targetAnchor 互换（端点自由吸附的 {side,t} 属于「哪一端」）；
+   *   ④ data.route.bends 镜像：t 以起点侧为 0 度量 → t' = 1-t；
+   *      肘线（smoothstep）的位移在 applyBendOrtho 里只取「段法向分量」，
+   *      而反向后的段方向翻转 → 法向跟着翻转 → 位移要取反才能停在同一侧；
+   *      曲线/直线（default/straight）的位移是绝对偏移 → 保持不变。
+   * 折点按新的 t 重排（applyBendOrtho 要求升序依次施加）。
+   */
+  reverseEdges: (edgeIds) => {
+    if (!edgeIds.length) return;
+    pushHistory();
+    set((st) => ({
+      edges: st.edges.map((e) => {
+        if (!edgeIds.includes(e.id)) return e;
+        const d = { ...((e.data ?? {}) as Record<string, unknown>) };
+        const sa = d.sourceAnchor;
+        const ta = d.targetAnchor;
+        if (ta === undefined) delete d.sourceAnchor;
+        else d.sourceAnchor = ta;
+        if (sa === undefined) delete d.targetAnchor;
+        else d.targetAnchor = sa;
+        const r = d.route;
+        if (isBendRoute(r)) {
+          const ortho = e.type !== 'default' && e.type !== 'straight';
+          d.route = {
+            bends: r.bends
+              .map((b) => ({
+                t: 1 - b.t,
+                dx: ortho ? -b.dx : b.dx,
+                dy: ortho ? -b.dy : b.dy,
+              }))
+              .sort((p, q) => p.t - q.t),
+          };
+        }
+        return {
+          ...e,
+          source: e.target,
+          target: e.source,
+          sourceHandle: e.targetHandle,
+          targetHandle: e.sourceHandle,
+          ...(Object.keys(d).length ? { data: d } : {}),
+        };
       }),
     }));
   },

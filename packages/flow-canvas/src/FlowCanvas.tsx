@@ -116,6 +116,11 @@ export interface FlowCanvasProps {
   onDeleteNode: (nodeId: string) => void;
   /** 点1 每行字数换行规则：cols=null 表示关闭（恢复自动换行） */
   onChangeWrapCols: (nodeId: string, cols: number | null) => void;
+  /* --- 连线右键菜单（P1）：把「右键=静默重置」升级成可发现的菜单 --- */
+  /** 一键反向（交换起止）：只把「谁指向谁」掉头，线的走向不变 */
+  onReverseEdges?: (edgeIds: string[]) => void;
+  /** 删除这些连线（走宿主 onEdgesChange 的 remove，连带清 assignments / steps） */
+  onDeleteEdges?: (edgeIds: string[]) => void;
   /** 0918 二修：连线描述拖动提交（沿线比例 t∈[0,1] 写入 edge.data.labelT）。
    *  opts.silent = 老数据迁移用，不进撤销历史。 */
   onMoveLabel: (edgeId: string, t: number, opts?: { silent?: boolean }) => void;
@@ -164,6 +169,31 @@ function isRoutableEdgeType(t: string | undefined): boolean {
  * 攒到四五个后路径绕成麻花」。3 个点足够画出任何常见绕行。
  */
 const MAX_WAYPOINTS = 3;
+
+/**
+ * 右键菜单状态（节点菜单 B4 · 连线菜单 P1）—— 两者共用同一个 `.ctx-menu` 浮层容器，
+ * 用 `t` 做判别式；`x/y` 是 viewport 坐标（.ctx-menu 是 position:fixed）。
+ */
+type CtxMenuState =
+  | {
+      t: 'node';
+      nodeId: string;
+      kind?: NodeKind;
+      expr?: boolean;
+      hasArrow?: boolean;
+      x: number;
+      y: number;
+    }
+  | {
+      t: 'edge';
+      edgeId: string;
+      /** 右键落点最近的那个折点下标（-1 = 附近没折点 → 不显示「删除此处折点」） */
+      bendIdx: number;
+      /** 这条线被手动改过（有折点 或 端点被钉住）→ 才显示「这条线重来」 */
+      pinned: boolean;
+      x: number;
+      y: number;
+    };
 
 /** 节点某条边的中点（端点未被吸附到自定义位置时的默认落点） */
 function sideCenter(b: AnchorBox, side: string): { x: number; y: number } {
@@ -447,6 +477,8 @@ export function FlowCanvas({
   onChangeKind,
   onDeleteNode,
   onChangeWrapCols,
+  onReverseEdges,
+  onDeleteEdges,
   onMoveLabel,
   onSyncEdgeSides,
   onTalkEdit,
@@ -501,16 +533,10 @@ export function FlowCanvas({
   const spotRef = useRef<HTMLDivElement | null>(null);
   const ptRef = useRef({ x: 0, y: 0 });
   const rafRef = useRef(0);
-  /** 右键菜单（B4）：编辑态 + 结构层时右击节点弹出。
-   *  kind 有值 = 流程节点（类型切换）；expr=true = 表达节点（仅删除 / 清指示线） */
-  const [ctxMenu, setCtxMenu] = useState<{
-    nodeId: string;
-    kind?: NodeKind;
-    expr?: boolean;
-    hasArrow?: boolean;
-    x: number;
-    y: number;
-  } | null>(null);
+  /** 右键菜单（B4 节点 / P1 连线）：编辑态 + 结构层时右击弹出。
+   *  节点：kind 有值 = 流程节点（类型切换）；expr=true = 表达节点（仅删除 / 清指示线）。
+   *  连线：反向 / 删除此处折点 / 这条线重来 / 删除连线。 */
+  const [ctxMenu, setCtxMenu] = useState<CtxMenuState | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const rf = useReactFlow<SopFlowNode, Edge>();
   /** Bug2 渲染校准：切视图后 RF 实测尺寸（measured）已就绪，交给宿主复检重叠 ——
@@ -1237,13 +1263,84 @@ export function FlowCanvas({
     [onEdgeRoute, edges, sidesOf]
   );
 
+  /**
+   * 连线右键菜单（P1）。
+   * 改前是「右键 = 静默重置」—— 没有菜单、没有确认，是误操作的主要来源
+   *（用户右键想看菜单，结果线自己变了个样）。现在拆成四项显式动作。
+   *
+   * 顺带解决「以为在操作的那条线其实没被选中」：右键先把这条边选上，
+   * 与左键点选同一心智，也让 FIX-B 的端点热区（reconnectable = selected）随之出现。
+   */
   const handleEdgeContextMenu: EdgeMouseHandler = useCallback(
     (evt, edge) => {
       if (!editable) return;
       evt.preventDefault();
-      resetEdgeRoute(edge.id);
+      evt.stopPropagation();
+      if (selectedEdgeIds.length !== 1 || selectedEdgeIds[0] !== edge.id) {
+        const sel: EdgeChange<Edge>[] = [
+          ...edges
+            .filter((e) => e.selected && e.id !== edge.id)
+            .map((e) => ({ type: 'select' as const, id: e.id, selected: false })),
+          { type: 'select' as const, id: edge.id, selected: true },
+        ];
+        onEdgesChange(sel);
+      }
+      const r = (edge.data as { route?: unknown } | undefined)?.route;
+      const bends = isBendRoute(r) ? r.bends : [];
+      /* 「删除此处折点」的靶子 = 右键落点最近的那个弯。
+         用与「拖动复用已有弯」完全相同的判定（t 差 < 0.16），
+         保证「右键手感」与「拖动手感」指的是同一个弯。 */
+      let bendIdx = -1;
+      if (bends.length) {
+        const flow = rf.screenToFlowPosition({ x: evt.clientX, y: evt.clientY });
+        const near = nearestOnEdgePath(edge.id, flow.x, flow.y);
+        if (near) {
+          let bestD = Infinity;
+          bends.forEach((b, i) => {
+            const dd = Math.abs(b.t - near.t);
+            if (dd < bestD) {
+              bestD = dd;
+              bendIdx = i;
+            }
+          });
+          if (bestD >= 0.16) bendIdx = -1;
+        }
+      }
+      setCtxMenu({
+        t: 'edge',
+        edgeId: edge.id,
+        bendIdx,
+        /* 与 resetEdgeRoute 的早退条件保持一致：只有真被改过才给「这条线重来」 */
+        pinned: isEdgeRoute(r) || isAnchorPinned(edge.data),
+        x: evt.clientX,
+        y: evt.clientY,
+      });
     },
-    [editable, resetEdgeRoute]
+    [editable, edges, selectedEdgeIds, onEdgesChange, rf]
+  );
+
+  /** 删除某一个折点（右键菜单）：弯删空后 route 置 null，端点保持钉住不弹回 */
+  const deleteBendAt = useCallback(
+    (edgeId: string, idx: number) => {
+      if (!onEdgeRoute) return;
+      const ed = edges.find((x) => x.id === edgeId);
+      if (!ed) return;
+      const r = (ed.data as { route?: unknown } | undefined)?.route;
+      if (!isBendRoute(r)) return;
+      const bends = r.bends.filter((_, i) => i !== idx);
+      const sides = sidesOf(ed);
+      onEdgeRoute(
+        edgeId,
+        {
+          route: bends.length ? { bends } : null,
+          sourceHandle: sides.source,
+          targetHandle: sides.target,
+          anchorPinned: true,
+        },
+        true
+      );
+    },
+    [onEdgeRoute, edges, sidesOf]
   );
 
   /**
@@ -1690,6 +1787,7 @@ export function FlowCanvas({
                 if (isExprNode(node)) {
                   const ld = node.data as Partial<LabelNodeData> | undefined;
                   setCtxMenu({
+                    t: 'node',
                     nodeId: node.id,
                     expr: true,
                     hasArrow: !!ld?.arrow,
@@ -1700,7 +1798,7 @@ export function FlowCanvas({
                 }
                 const kind = ((node.data as Partial<SopNodeData> | undefined)?.kind ??
                   'step') as NodeKind;
-                setCtxMenu({ nodeId: node.id, kind, x: evt.clientX, y: evt.clientY });
+                setCtxMenu({ t: 'node', nodeId: node.id, kind, x: evt.clientX, y: evt.clientY });
               }
             : undefined
         }
@@ -1998,67 +2096,125 @@ export function FlowCanvas({
         </div>
       )}
 
-      {/* 节点右键菜单（B4）：类型切换 + 删除。表达节点只给删除（WP4） */}
+      {/* 右键菜单：节点（B4 类型切换 + 删除）· 连线（P1 反向 / 折点 / 重来 / 删除）。
+          两者共用 .ctx-menu 浮层；data-kind 供回归探针区分。 */}
       {ctxMenu && (
         <div
           className="ctx-menu"
           data-testid="ctx-menu"
+          data-kind={ctxMenu.t}
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <div className="ctx-head">
-            {ctxMenu.expr ? '自由表达元素' : `${KIND_TAG[ctxMenu.kind ?? 'step'] || '步骤'} →`}
-          </div>
-          {!ctxMenu.expr &&
-            KIND_OPTIONS.filter((o) => {
-              if (o.kind === ctxMenu.kind) return false;
-              if (o.kind === 'io-start' || o.kind === 'io-end') {
-                return !nodes.some((n) => n.id !== ctxMenu.nodeId && n.data.kind === o.kind);
-              }
-              return true;
-            }).map((o) => (
+          {ctxMenu.t === 'node' ? (
+            <>
+              <div className="ctx-head">
+                {ctxMenu.expr ? '自由表达元素' : `${KIND_TAG[ctxMenu.kind ?? 'step'] || '步骤'} →`}
+              </div>
+              {!ctxMenu.expr &&
+                KIND_OPTIONS.filter((o) => {
+                  if (o.kind === ctxMenu.kind) return false;
+                  if (o.kind === 'io-start' || o.kind === 'io-end') {
+                    return !nodes.some((n) => n.id !== ctxMenu.nodeId && n.data.kind === o.kind);
+                  }
+                  return true;
+                }).map((o) => (
+                  <button
+                    key={o.kind}
+                    className="ctx-item"
+                    onClick={() => {
+                      if (!ctxMenu.kind) return;
+                      onChangeKind(ctxMenu.nodeId, o.kind);
+                      setCtxMenu(null);
+                    }}
+                  >
+                    转为{o.label}
+                  </button>
+                ))}
+              {/* 点1 自定义换行：每行字数规则（null = 关闭，恢复到宽度自动折行） */}
+              {!ctxMenu.expr && (
+                <>
+                  <div className="ctx-sep" />
+                  <div className="ctx-head">每行字数</div>
+                  {[null, 4, 6, 8, 12].map((c) => (
+                    <button
+                      key={String(c)}
+                      className="ctx-item"
+                      data-testid={`wrap-cols-${c ?? 'off'}`}
+                      onClick={() => {
+                        onChangeWrapCols(ctxMenu.nodeId, c);
+                        setCtxMenu(null);
+                      }}
+                    >
+                      {c === null ? '自动换行（不按字数）' : `每行 ${c} 字`}
+                    </button>
+                  ))}
+                </>
+              )}
+              {!ctxMenu.expr && <div className="ctx-sep" />}
               <button
-                key={o.kind}
-                className="ctx-item"
+                className="ctx-item danger"
                 onClick={() => {
-                  if (!ctxMenu.kind) return;
-                  onChangeKind(ctxMenu.nodeId, o.kind);
+                  onDeleteNode(ctxMenu.nodeId);
                   setCtxMenu(null);
                 }}
               >
-                转为{o.label}
+                删除节点
               </button>
-            ))}
-          {/* 点1 自定义换行：每行字数规则（null = 关闭，恢复到宽度自动折行） */}
-          {!ctxMenu.expr && (
+            </>
+          ) : (
             <>
-              <div className="ctx-sep" />
-              <div className="ctx-head">每行字数</div>
-              {[null, 4, 6, 8, 12].map((c) => (
+              <div className="ctx-head">连线</div>
+              <button
+                className="ctx-item"
+                data-testid="edge-menu-reverse"
+                title="交换起点与终点（箭头掉头），线的走向保持原样"
+                onClick={() => {
+                  onReverseEdges?.([ctxMenu.edgeId]);
+                  setCtxMenu(null);
+                }}
+              >
+                ⇄ 反向箭头（交换起止）
+              </button>
+              {ctxMenu.bendIdx >= 0 && (
                 <button
-                  key={String(c)}
                   className="ctx-item"
-                  data-testid={`wrap-cols-${c ?? 'off'}`}
+                  data-testid="edge-menu-del-bend"
+                  title="只删掉鼠标这一处的折点，其余折点与端点不动"
                   onClick={() => {
-                    onChangeWrapCols(ctxMenu.nodeId, c);
+                    deleteBendAt(ctxMenu.edgeId, ctxMenu.bendIdx);
                     setCtxMenu(null);
                   }}
                 >
-                  {c === null ? '自动换行（不按字数）' : `每行 ${c} 字`}
+                  删除此处折点
                 </button>
-              ))}
+              )}
+              {ctxMenu.pinned && (
+                <button
+                  className="ctx-item"
+                  data-testid="edge-menu-reset"
+                  title="清空全部折点 + 端点交还自动（这条线重新跟着节点位置走）"
+                  onClick={() => {
+                    resetEdgeRoute(ctxMenu.edgeId);
+                    setCtxMenu(null);
+                  }}
+                >
+                  ⟲ 这条线重来
+                </button>
+              )}
+              <div className="ctx-sep" />
+              <button
+                className="ctx-item danger"
+                data-testid="edge-menu-delete"
+                onClick={() => {
+                  onDeleteEdges?.([ctxMenu.edgeId]);
+                  setCtxMenu(null);
+                }}
+              >
+                删除连线
+              </button>
             </>
           )}
-          {!ctxMenu.expr && <div className="ctx-sep" />}
-          <button
-            className="ctx-item danger"
-            onClick={() => {
-              onDeleteNode(ctxMenu.nodeId);
-              setCtxMenu(null);
-            }}
-          >
-            删除节点
-          </button>
         </div>
       )}
 
