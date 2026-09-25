@@ -4,6 +4,9 @@ node_modules/
 # Build outputs
 dist/
 
+# Vite 加载配置时落下的临时文件（每次 dev/build 都会重新生成，勿入库）
+vite.config.ts.timestamp-*.mjs
+
 # Tauri（Rust 构建产物与自动生成代码）
 src-tauri/target/
 src-tauri/gen/
