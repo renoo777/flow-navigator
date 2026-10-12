@@ -1,7 +1,8 @@
 /// Flow Navigator 桌面端入口。
 ///
 /// 保持最简：应用是纯前端 SPA（数据存 IndexedDB），Rust 侧只负责窗口与 WebView 容器，
-/// 外加自动更新（updater）、重启（process）、对话框（dialog）三个插件。
+/// 外加自动更新（updater）、重启（process）、对话框（dialog）三个插件，
+/// 以及「用系统浏览器打开外部链接」（opener crate，见 `open_external`）。
 ///
 /// 唯一例外是**图库文件镜像**（vault_* 三个命令）：IndexedDB 存在 WebView 的数据目录里
 /// （Windows: %LOCALAPPDATA%\<identifier>\EBWebView），它跟着 WebView 的 origin 走，
@@ -26,6 +27,24 @@ fn export_save_bytes(path: String, b64: String) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
+/// 反馈入口 · 用系统默认浏览器打开外部链接（预填好的 GitHub Issue 页）。
+///
+/// **为什么必须走 Rust 而不是 `<a target="_blank">`**：Tauri 2 默认不处理 new_window 请求
+/// （`WebviewBuilder::new_window_handler` 初值 `None`，只有显式调 `on_new_window` 才会安装），
+/// 而 wry 在无处理器时的分支是 `args.SetHandled(true)` —— 即「已处理，且什么都不做」。
+/// 结果：桌面端 `<a target="_blank">` 点了毫无反应（无报错、无新窗口）。
+/// 走 `opener` 则是 ShellExecute/系统关联程序，长 URL 也不会被命令行长度或 `&` 转义坑到。
+///
+/// 只放行 http(s)：这个命令能被前端任意调用，收窄协议可避免它变成
+/// 「用系统关联程序打开任意东西」的通用入口。
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("仅允许打开 http(s) 链接".into());
+    }
+    opener::open(&url).map_err(|e| format!("打开链接失败: {e}"))
 }
 
 const LIB_FILE: &str = "flow-library.json";
@@ -135,7 +154,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![vault_path, vault_load, vault_save, export_save_bytes])
+        .invoke_handler(tauri::generate_handler![
+            vault_path,
+            vault_load,
+            vault_save,
+            export_save_bytes,
+            open_external
+        ])
         .run(tauri::generate_context!())
         .expect("启动 Flow Navigator 失败");
 }

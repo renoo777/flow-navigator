@@ -23,6 +23,9 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = "2.11.0"
 # 0918 · GIF 导出落盘：二进制经 IPC 以 base64 传（避免 JSON 序列化失真）
 base64 = "0.22"
+# 1012 · 反馈入口需用系统浏览器打开预填的 GitHub Issue 页。
+# Tauri 2 默认不处理 new_window 请求 → 桌面端 `<a target="_blank">` 是死的，必须走 Rust。
+opener = "0.9.0"
 
 [profile.release]
 codegen-units = 1

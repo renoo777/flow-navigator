@@ -4,6 +4,7 @@ import { resolveVariables } from '@flow/core';
 import { DOCS_STORE, dbGetAll } from './idb';
 import { blankContent, sanitizeContent, useAppStore, type FlowDoc } from './store';
 import { AboutPanel } from './AboutPanel';
+import { FeedbackModal } from './FeedbackModal';
 import { autoCheckUpdates } from './useUpdater';
 
 const UNGROUPED = '未分组';
@@ -62,6 +63,8 @@ export function LibraryScreen() {
   const [query, setQuery] = useState('');
   /** 关于/支持作者面板（打赏双码 + 署名）——入口在主页标题旁 */
   const [aboutOpen, setAboutOpen] = useState(false);
+  /** 反馈弹窗。与「关于」互斥：两个弹窗都在 document 上监听 Esc，同开会出现一次 Esc 关两个 */
+  const [fbOpen, setFbOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const openDoc = useAppStore((s) => s.openDoc);
@@ -278,7 +281,19 @@ export function LibraryScreen() {
       </header>
 
       {/* 关于 / 支持作者（含打赏双码），主页专属入口 */}
-      {aboutOpen && <AboutPanel onClose={() => setAboutOpen(false)} />}
+      {aboutOpen && (
+        <AboutPanel
+          onClose={() => setAboutOpen(false)}
+          onOpenFeedback={() => {
+            setAboutOpen(false);
+            setFbOpen(true);
+          }}
+        />
+      )}
+
+      {/* 反馈弹窗：与「关于」同级而不是嵌在它里面 —— .modal 带 backdrop-filter，
+          会成为 position:fixed 后代的包含块，嵌套会让遮罩被限在小盒子里。 */}
+      {fbOpen && <FeedbackModal onClose={() => setFbOpen(false)} />}
 
       {docs.length === 0 ? (
         <div className="lib-empty" data-testid="lib-empty">

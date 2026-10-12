@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import { ModalShell } from './VarModals';
 import { appVersion, isTauriEnv, manualCheckUpdates } from './useUpdater';
+import { openExternal } from './openExternal';
 
 /** 元数据集中，便于后续替换码图或文案的唯一出口 */
 export const ABOUT_META = {
@@ -71,7 +72,15 @@ function QrCard({
   );
 }
 
-export function AboutPanel({ onClose }: { onClose?: () => void }) {
+export function AboutPanel({
+  onClose,
+  onOpenFeedback,
+}: {
+  onClose?: () => void;
+  /** 反馈弹窗由 LibraryScreen 持有：两个弹窗都监听 document 上的 Esc，
+   *  同行开启会出现「按一次 Esc 两个都关」→ 因此同时只开一个。 */
+  onOpenFeedback: () => void;
+}) {
   const [copied, setCopied] = useState<Platform | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
   const [ver, setVer] = useState('');
@@ -125,6 +134,12 @@ export function AboutPanel({ onClose }: { onClose?: () => void }) {
             target="_blank"
             rel="noreferrer noopener"
             title="在 GitHub 上 star / fork 这个项目"
+            onClick={(e) => {
+              /* 桌面端 <a target="_blank"> 是死的（Tauri 2 不处理 new_window 请求），
+                 统一改走 openExternal：Tauri 走系统浏览器，Web 走 window.open。 */
+              e.preventDefault();
+              void openExternal(`https://github.com/${ABOUT_META.githubUser}`);
+            }}
           >
             GitHub
           </a>
@@ -177,12 +192,31 @@ export function AboutPanel({ onClose }: { onClose?: () => void }) {
                 target="_blank"
                 rel="noreferrer noopener"
                 title="GitHub Sponsors 跨境打赏通道（需 Visa/MasterCard 信用卡）"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openExternal(`https://github.com/sponsors/${ABOUT_META.githubUser}`);
+                }}
               >
                 海外用户：GitHub Sponsor ↗
               </a>
             </div>
           </div>
         )}
+
+        {/* 反馈：写描述 → 用系统浏览器打开预填好的 GitHub Issue 页。
+            入口做成一行普通按钮而非悬浮球，与本面板其它操作同级（不另外单开面板）。 */}
+        <div className="ab-feedback-row" data-testid="ab-feedback">
+          <span className="ab-fb-hint">遇到问题或有建议？</span>
+          <button
+            type="button"
+            className="ab-update-btn"
+            data-testid="feedback-btn"
+            title="填写后会用浏览器打开一个预填好的 GitHub Issue 页，在那里点 Submit 完成提交"
+            onClick={onOpenFeedback}
+          >
+            提交反馈
+          </button>
+        </div>
 
         {/* 版本 + 检查更新：仅桌面版显示按钮；浏览器版只展示版本 */}
         <div className="ab-version-row" data-testid="ab-version">
