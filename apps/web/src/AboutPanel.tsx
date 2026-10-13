@@ -5,7 +5,8 @@
 import { useEffect, useState } from 'react';
 import { ModalShell } from './VarModals';
 import { appVersion, isTauriEnv, manualCheckUpdates } from './useUpdater';
-import { openExternal } from './openExternal';
+import { copyText, openExternal } from './openExternal';
+import { buildFeedbackFormUrl } from './feedbackForm';
 
 /** 元数据集中，便于后续替换码图或文案的唯一出口 */
 export const ABOUT_META = {
@@ -72,19 +73,13 @@ function QrCard({
   );
 }
 
-export function AboutPanel({
-  onClose,
-  onOpenFeedback,
-}: {
-  onClose?: () => void;
-  /** 反馈弹窗由 LibraryScreen 持有：两个弹窗都监听 document 上的 Esc，
-   *  同行开启会出现「按一次 Esc 两个都关」→ 因此同时只开一个。 */
-  onOpenFeedback: () => void;
-}) {
+export function AboutPanel({ onClose }: { onClose?: () => void }) {
   const [copied, setCopied] = useState<Platform | null>(null);
   const [donateOpen, setDonateOpen] = useState(false);
   const [ver, setVer] = useState('');
   const [busy, setBusy] = useState(false);
+  /** 反馈开失败时的原地兜底提示（不额外开页面；成功时恒为空） */
+  const [fbNote, setFbNote] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -102,6 +97,22 @@ export function AboutPanel({
     } catch {
       /* 浏览器无 clipboard 权限——降级成选中 */
       window.alert(`收款人备注：${v}\n长按可复制。`);
+    }
+  };
+
+  /** 反馈：**一键直达**飞书收集表（免登录、可传图）—— 不再插一层中间弹窗。
+   *  只有「没打开成功」时才在原地给一句兜底提示（复制链接），不额外开页面。 */
+  const openFeedback = async () => {
+    setFbNote('');
+    try {
+      const { url } = buildFeedbackFormUrl();
+      const channel = await openExternal(url);
+      if (channel === 'blocked' || channel === 'failed') {
+        const ok = await copyText(url);
+        setFbNote(ok ? '没能自动打开，链接已复制到剪贴板' : '没能自动打开，请手动复制该链接');
+      }
+    } catch (e) {
+      setFbNote(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -203,20 +214,25 @@ export function AboutPanel({
           </div>
         )}
 
-        {/* 反馈：写描述 → 用系统浏览器打开预填好的 GitHub Issue 页。
-            入口做成一行普通按钮而非悬浮球，与本面板其它操作同级（不另外单开面板）。 */}
+        {/* 反馈：**一键直达**飞书收集表（免登录、可传图片）—— 不再经过中间弹窗。
+            入口做成一行普通按钮而非悬浮球，与本面板其它操作同级。 */}
         <div className="ab-feedback-row" data-testid="ab-feedback">
           <span className="ab-fb-hint">遇到问题或有建议？</span>
           <button
             type="button"
             className="ab-update-btn"
             data-testid="feedback-btn"
-            title="填写后会用浏览器打开一个预填好的 GitHub Issue 页，在那里点 Submit 完成提交"
-            onClick={onOpenFeedback}
+            title="用系统浏览器打开飞书收集表（免登录、可传图片）"
+            onClick={() => void openFeedback()}
           >
-            提交反馈
+            意见反馈
           </button>
         </div>
+        {fbNote && (
+          <div className="fb-err" data-testid="fb-note" role="alert">
+            {fbNote}
+          </div>
+        )}
 
         {/* 版本 + 检查更新：仅桌面版显示按钮；浏览器版只展示版本 */}
         <div className="ab-version-row" data-testid="ab-version">
